@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+langchain
+langchain-community
+langchain-huggingface
+chromadb
+pydantic
+sentence-transformers
+python-multipart
+requests
+aiofiles
+watchdog
