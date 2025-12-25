@@ -22,25 +22,40 @@ export function SettingsModal({ open, onOpenChange, onIngestSuccess }: SettingsM
         setIsLoading(true)
         setError(null)
 
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 300000) // 5-minute timeout
+
         try {
+            const sanitizedPath = repoPath.trim().replace(/^['"]+|['"]+$/g, '')
+            console.log("Ingesting path:", sanitizedPath)
+
             const response = await fetch("http://localhost:8000/api/ingest", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ repo_path: repoPath }),
+                body: JSON.stringify({ repo_path: sanitizedPath }),
+                signal: controller.signal
             })
 
+            clearTimeout(timeoutId)
+
             if (!response.ok) {
-                const data = await response.json()
-                throw new Error(data.detail || "Ingestion failed")
+                const data = await response.json().catch(() => ({}))
+                throw new Error(data.detail || `Ingestion failed with status ${response.status}`)
             }
 
             const data = await response.json()
             alert(`Successfully ingested ${data.files_count} files and ${data.chunks_count} chunks.`)
             onIngestSuccess()
             onOpenChange(false)
-        } catch (err: any) {
-            setError(err.message)
+        } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+            console.error("Ingestion error:", err)
+            if (err.name === 'AbortError') {
+                setError("Ingestion timed out. The repository might be too large.")
+            } else {
+                setError(err.message || "An unexpected error occurred")
+            }
         } finally {
+            clearTimeout(timeoutId)
             setIsLoading(false)
         }
     }
