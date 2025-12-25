@@ -80,23 +80,24 @@ export default function Home() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col bg-background p-4 md:p-8">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold tracking-tight">CodeScope</h1>
-        <Button variant="outline" size="icon" onClick={() => setIsSettingsOpen(true)}>
-          <Settings className="h-4 w-4" />
+    <main className="flex h-full flex-col bg-transparent p-4 md:p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-xl font-bold tracking-tight text-white">CodeScope</h1>
+        <Button variant="ghost" size="icon" onClick={() => setIsSettingsOpen(true)} className="text-white/70 hover:text-white hover:bg-white/10">
+          <Settings className="h-5 w-5" />
         </Button>
       </div>
 
-      <Card className="flex-1 flex flex-col overflow-hidden h-[80vh]">
-        <ScrollArea className="flex-1 p-4">
+      <Card className="flex-1 flex flex-col overflow-hidden bg-black/20 border-white/10 backdrop-blur-sm shadow-inner">
+        {/* Replaced ScrollArea with standard div for reliability */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.map((msg, index) => (
             <ChatMessage key={index} role={msg.role} content={msg.content} />
           ))}
           <div ref={messagesEndRef} />
-        </ScrollArea>
+        </div>
 
-        <div className="p-4 border-t bg-card">
+        <div className="p-4 border-t border-white/10 bg-white/5">
           <form
             onSubmit={(e) => {
               e.preventDefault()
@@ -109,9 +110,9 @@ export default function Home() {
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask a question about your codebase..."
               disabled={isGenerating}
-              className="flex-1"
+              className="flex-1 bg-black/40 border-white/10 text-white placeholder:text-white/40 focus-visible:ring-white/20"
             />
-            <Button type="submit" disabled={isGenerating || !input.trim()}>
+            <Button type="submit" disabled={isGenerating || !input.trim()} className="bg-white text-black hover:bg-white/90">
               <Send className="h-4 w-4" />
             </Button>
           </form>
