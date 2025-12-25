@@ -1,7 +1,7 @@
 from typing import AsyncIterable
 from langchain_community.llms import Ollama
-from langchain.chains import RetrievalQA
-from langchain.prompts import PromptTemplate
+# from langchain.chains import RetrievalQA
+from langchain_core.prompts import PromptTemplate
 from app.db.chroma import get_vector_store
 from app.core.config import settings
 
@@ -51,7 +51,18 @@ async def chat_stream(query: str) -> AsyncIterable[str]:
     formatted_prompt = prompt.format(context=context_text, question=query)
     
     # Stream the response from Ollama
-    # Ollama from langchain supports streaming via .astream()
-    async for chunk in llm.astream(formatted_prompt):
-        yield chunk
+    try:
+        async for chunk in llm.astream(formatted_prompt):
+            yield chunk
+    except Exception as e:
+        error_msg = str(e)
+        if "Cannot connect to host" in error_msg or "Connection refused" in error_msg:
+            yield "🔴 **Error: Ollama is not running.**\n\n"
+            yield "To use CodeScope, you need a local LLM running via Ollama.\n"
+            yield "1. Download Ollama from [ollama.com](https://ollama.com).\n"
+            yield "2. Install and run it.\n"
+            yield f"3. Pull the model: `ollama pull {settings.OLLAMA_MODEL}`\n"
+            yield "4. Restart CodeScope."
+        else:
+            yield f"🔴 **An error occurred:** {error_msg}"
 
