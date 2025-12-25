@@ -1,7 +1,7 @@
 import React from 'react'
 import ReactMarkdown from 'react-markdown'
-import SyntaxHighlighter from 'react-syntax-highlighter/dist/cjs/prism'
-import vscDarkPlus from 'react-syntax-highlighter/dist/cjs/styles/prism/vsc-dark-plus'
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { cn } from '@/lib/utils'
 
 interface ChatMessageProps {
@@ -19,15 +19,16 @@ export function ChatMessage({ role, content }: ChatMessageProps) {
         >
             <div
                 className={cn(
-                    "max-w-[80%] rounded-lg px-4 py-3 text-sm",
+                    "max-w-[80%] rounded-lg px-4 py-3 text-sm shadow-sm",
                     role === 'user'
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-foreground"
+                        ? "bg-blue-600 text-white"
+                        : "bg-zinc-700 text-white"
                 )}
             >
                 {role === 'assistant' ? (
                     <ReactMarkdown
                         components={{
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
                             code({ className, children, ...props }: any) {
                                 const match = /language-(\w+)/.exec(className || '')
                                 return match ? (
