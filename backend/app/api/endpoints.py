@@ -15,9 +15,12 @@ class ChatRequest(BaseModel):
 @router.post("/ingest")
 async def ingest_endpoint(request: IngestRequest):
     try:
+        print(f"Received ingestion request for path: {request.repo_path}")
         result = ingest_repository(request.repo_path)
+        print(f"Ingestion successful: {result}")
         return result
     except Exception as e:
+        print(f"Ingestion failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/chat")
