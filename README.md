@@ -58,6 +58,6 @@ npm run dev
 5. Once complete, type your question in the chat bar!
 
 ## Tech Stack
-- **Backend:** FastAPI, LangChain, ChromaDB, HuggingFace Embeddings.
+- **Backend:** Python, FastAPI, LangChain, ChromaDB, HuggingFace Embeddings.
 - **Frontend:** Next.js 14, TypeScript, Tailwind CSS, Shadcn UI.
 - **AI:** Ollama (Llama 3/Mistral).
