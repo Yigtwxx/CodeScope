@@ -1,4 +1,4 @@
-# CodeScope
+# 🔭 CodeScope
 
 CodeScope is a privacy-first, fully local RAG (Retrieval-Augmented Generation) application that allows you to "chat" with your codebase. It uses local LLMs via Ollama and ChromaDB for vector storage, ensuring no data leaves your machine.
 
