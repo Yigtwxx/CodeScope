@@ -3,7 +3,6 @@
 CodeScope is a privacy-first, fully local RAG (Retrieval-Augmented Generation) application that allows you to "chat" with your codebase. It uses local LLMs via Ollama and ChromaDB for vector storage, ensuring no data leaves your machine.
 
 ## Features
-
 - **Privacy First:** 100% local execution. No cloud APIs.
 - **RAG Architecture:** Chat with your code using vector embeddings.
 - **Modern UI:** Built with Next.js, Tailwind CSS, and Shadcn UI.
