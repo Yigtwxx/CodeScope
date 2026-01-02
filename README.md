@@ -14,6 +14,7 @@ CodeScope is a privacy-first, fully local RAG (Retrieval-Augmented Generation) a
 - **Ollama:** [Download Ollama](https://ollama.com/) and pull a model (e.g., `ollama pull llama3`).
 
 ## Setup & Running
+
 ### 1. Start Ollama
 Ensure Ollama is running in the background.
 ```bash
