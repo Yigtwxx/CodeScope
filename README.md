@@ -57,7 +57,7 @@ npm run dev
 3. Enter the absolute path to a local repository you want to chat with (e.g., `C:/Users/Name/Projects/MyRepo`).
 4. Click **Ingest Repository**. This will filter code files, chunk them, embed them, and store them in ChromaDB.
 5. Once complete, type your question in the chat bar!
-
+---
 ## Tech Stack
 - **Backend:** Python, FastAPI, LangChain, ChromaDB, HuggingFace Embeddings.
 - **Frontend:** Next.js 14, TypeScript, Tailwind CSS, Shadcn UI.
