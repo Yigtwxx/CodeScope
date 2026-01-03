@@ -21,7 +21,6 @@ Ensure Ollama is running in the background.
 ollama serve
 ```
 
-
 ### 2. Backend Setup
 Exposed on `http://localhost:8000`.
 
