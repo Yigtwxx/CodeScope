@@ -66,39 +66,41 @@ def ingest_repository(repo_path: str) -> dict:
     vector_store = get_vector_store()
     
     # Clear existing documents to support "switching" repos
+    # Clear existing documents to support "switching" repos
     try:
-        print("DEBUG: entering ingestion cleanup...")
-        print("DEBUG: calling delete_collection()...")
+        print("🧹 [Ingestion] Entering cleanup phase...")
+        print("🗑️  [Ingestion] Calling delete_collection() to remove old data...")
         # delete_collection() is the most robust way to nuke everything
         try:
             vector_store.delete_collection()
-            print("DEBUG: delete_collection() returned.")
+            print("✅ [Ingestion] Collection deleted successfully.")
         except ValueError:
             # Collection might not exist, which is fine
-            print("DEBUG: Collection did not exist, skipping delete.")
+            print("ℹ️  [Ingestion] Collection did not exist, skipping delete.")
         except Exception as e:
-            print(f"DEBUG: delete_collection error: {e}")
+            print(f"⚠️  [Ingestion] delete_collection warning: {e}")
 
-        print("DEBUG: Collection deleted/checked. Re-initializing vector store...")
+        print("🔄 [Ingestion] Re-initializing vector store...")
         
         # We must re-initialize the vector store because the collection object is now invalid
         vector_store = get_vector_store()
-        print("DEBUG: vector_store re-initialized.")
+        print("✅ [Ingestion] Vector store re-initialized.")
 
     except Exception as e:
-        print(f"Warning: delete_collection logic failed: {e}")
+        print(f"❌ [Ingestion] Critical cleanup failure: {e}")
 
     # Add documents to the store
-    print(f"DEBUG: Adding {len(chunks)} chunks to vector store...")
+    print(f"📥 [Ingestion] Adding {len(chunks)} chunks to vector store...")
     # Note: simple add_documents usage. For large repos, might need batching.
     try:
         if chunks:
             vector_store.add_documents(chunks)
-            print("DEBUG: add_documents completed.")
+            print("✅ [Ingestion] Documents added successfully.")
         else:
-            print("DEBUG: No chunks to add.")
+            print("⚠️  [Ingestion] No chunks found to add.")
     except Exception as e:
-        print(f"ERROR: add_documents failed: {e}")
+        print(f"❌ [Ingestion] Add documents failed: {e}")
         raise e
 
+    print(f"✨ [Ingestion] Finished! Files: {len(raw_documents)}, Chunks: {len(chunks)}")
     return {"message": "Ingestion successful", "chunks_count": len(chunks), "files_count": len(raw_documents)}
