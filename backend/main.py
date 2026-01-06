@@ -8,10 +8,16 @@ app = FastAPI(title=settings.PROJECT_NAME, version=settings.VERSION)
 # Startup Cleanup: Clear existing vector DB to ensure fresh start
 import shutil
 import os
+import sys
+
+# Ensure UTF-8 output for emojis on Windows
+sys.stdout.reconfigure(encoding='utf-8')
+sys.stderr.reconfigure(encoding='utf-8')
+
 
 @app.on_event("startup")
 async def startup_event():
-    print("Checking for existing ChromaDB persistence to clear...")
+    print("🧹 [Startup] Checking for existing ChromaDB persistence to clear...")
     db_path = settings.CHROMA_DB_DIR
     if os.path.exists(db_path):
         try:
@@ -20,11 +26,11 @@ async def startup_event():
                 shutil.rmtree(db_path)
             else:
                 os.remove(db_path)
-            print(f"Startup: Cleared existing persistence at {db_path}")
+            print(f"✅ [Startup] Cleared existing persistence at {db_path}")
         except Exception as e:
-            print(f"Startup: Warning - Failed to clear persistence: {e}")
+            print(f"⚠️  [Startup] Warning - Failed to clear persistence: {e}")
     else:
-        print("Startup: No existing persistence found.")
+        print("✨ [Startup] No existing persistence found. Starting fresh.")
 
 # Set all CORS enabled origins
 app.add_middleware(
