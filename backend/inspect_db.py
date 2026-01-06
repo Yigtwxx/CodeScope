@@ -28,7 +28,10 @@ def inspect():
             print(f"Total Documents: {count}")
             
             if count > 0:
-                print("\n--- First 3 Documents Preview ---")
+                print("\n" + "="*50)
+                print(f" <<< First 3 Documents Preview >>> ")
+                print("="*50)
+                
                 # Peek at the data (returns the first few results)
                 data = col.peek(limit=3)
                 
@@ -38,14 +41,16 @@ def inspect():
                 documents = data['documents']
                 
                 for i in range(len(ids)):
-                    print(f"\n[Document {i+1}]")
-                    print(f"ID: {ids[i]}")
-                    print(f"Metadata: {metadatas[i]}")
+                    print(f"\n{'-'*20} [ Document {i+1} ] {'-'*20}")
+                    print(f"ID       : {ids[i]}")
+                    print(f"Metadata : {metadatas[i]}")
+                    
                     # Truncate content for display
                     content_preview = documents[i][:200].replace('\n', ' ') + "..." if documents[i] else "No content"
-                    print(f"Content (First 200 chars): {content_preview}")
+                    print(f"\n< Content Preview >\n{content_preview}")
+                    print(f"{'-'*54}")
             else:
-                print("Collection is empty.")
+                print("\nCollection is empty.")
                 
     except Exception as e:
         print(f"Error inspecting database: {e}")
