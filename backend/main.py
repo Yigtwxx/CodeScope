@@ -5,6 +5,27 @@ from app.api.endpoints import router as api_router
 
 app = FastAPI(title=settings.PROJECT_NAME, version=settings.VERSION)
 
+# Startup Cleanup: Clear existing vector DB to ensure fresh start
+import shutil
+import os
+
+@app.on_event("startup")
+async def startup_event():
+    print("Checking for existing ChromaDB persistence to clear...")
+    db_path = settings.CHROMA_DB_DIR
+    if os.path.exists(db_path):
+        try:
+            # Check if it's a file or directory and delete accordingly
+            if os.path.isdir(db_path):
+                shutil.rmtree(db_path)
+            else:
+                os.remove(db_path)
+            print(f"Startup: Cleared existing persistence at {db_path}")
+        except Exception as e:
+            print(f"Startup: Warning - Failed to clear persistence: {e}")
+    else:
+        print("Startup: No existing persistence found.")
+
 # Set all CORS enabled origins
 app.add_middleware(
     CORSMiddleware,
