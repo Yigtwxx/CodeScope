@@ -1,4 +1,4 @@
-# CodeScope
+# 🔭 CodeScope
 
 CodeScope is a privacy-first, fully local RAG (Retrieval-Augmented Generation) application that allows you to "chat" with your codebase. It uses local LLMs via Ollama and ChromaDB for vector storage, ensuring no data leaves your machine.
 
@@ -34,6 +34,7 @@ pip install -r requirements.txt
 # Run the server
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
+
 *Note: The first run might take a moment to download the embedding model.*
 
 ### 3. Frontend Setup
@@ -56,8 +57,8 @@ npm run dev
 3. Enter the absolute path to a local repository you want to chat with (e.g., `C:/Users/Name/Projects/MyRepo`).
 4. Click **Ingest Repository**. This will filter code files, chunk them, embed them, and store them in ChromaDB.
 5. Once complete, type your question in the chat bar!
-
+---
 ## Tech Stack
-- **Backend:** FastAPI, LangChain, ChromaDB, HuggingFace Embeddings.
+- **Backend:** Python, FastAPI, LangChain, ChromaDB, HuggingFace Embeddings.
 - **Frontend:** Next.js 14, TypeScript, Tailwind CSS, Shadcn UI.
 - **AI:** Ollama (Llama 3/Mistral).
