@@ -14,7 +14,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from app.api.files import router as files_router
+
 app.include_router(api_router, prefix=settings.API_V1_STR)
+app.include_router(files_router, prefix="/api/files", tags=["files"])
 
 if __name__ == "__main__":
     import uvicorn
