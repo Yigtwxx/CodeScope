@@ -1,3 +1,4 @@
+/* eslint-disable */
 declare module 'react-syntax-highlighter' {
     export const Prism: any;
     export const Light: any;
@@ -10,3 +11,4 @@ declare module 'react-syntax-highlighter/*' {
     export default content;
     export const vscDarkPlus: any;
 }
+
