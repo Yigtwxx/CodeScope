@@ -115,31 +115,44 @@ def load_documents(repo_path: str) -> List[Document]:
                     continue
     return documents
 
-def ingest_repository(repo_path: str) -> dict:
+def ingest_repository_stream(repo_path: str):
     """
-    Ingests a repository from the given path into ChromaDB.
+    Ingests a repository and yields progress updates.
     """
+    yield "📦 Starting repository ingestion...\n"
     print("\n" + "="*60)
     print("🚀 STARTING REPOSITORY INGESTION")
     print("="*60)
     
     if not os.path.exists(repo_path):
-        print(f"❌ ERROR: Repository path not found: {repo_path}")
-        raise FileNotFoundError(f"Repository path not found: {repo_path}")
+        error_msg = f"❌ ERROR: Repository path not found: {repo_path}"
+        print(error_msg)
+        yield error_msg + "\n"
+        return
     
     print(f"📂 Repository: {repo_path}")
+    yield f"📂 Repository: {repo_path}\n"
 
     # 1. Load Documents
-    print("\n📖 STEP 1/3: Loading documents...")
+    step_msg = "\n📖 STEP 1/3: Loading documents..."
+    print(step_msg)
+    yield step_msg + "\n"
+    
     raw_documents = load_documents(repo_path)
     if not raw_documents:
-        print("⚠️  No valid documents found")
-        return {"message": "No valid documents found in the repository.", "count": 0}
+        error_msg = "⚠️  No valid documents found"
+        print(error_msg)
+        yield error_msg + "\n"
+        return
     
-    print(f"✅ Loaded {len(raw_documents)} files")
+    success_msg = f"✅ Loaded {len(raw_documents)} files"
+    print(success_msg)
+    yield success_msg + "\n"
 
     # 2. Split Text with Code-Aware Chunking
-    print("\n✂️  STEP 2/3: Code-aware chunking...")
+    step_msg = "\n✂️  STEP 2/3: Code-aware chunking..."
+    print(step_msg)
+    yield step_msg + "\n"
     chunks = []
     
     # Group documents by extension for efficient processing
@@ -157,10 +170,14 @@ def ingest_repository(repo_path: str) -> dict:
         chunks.extend(ext_chunks)
         print(f"   💎 {lang.capitalize():12} → {len(ext_chunks):4} chunks from {len(docs):3} files")
     
-    print(f"✅ Total chunks: {len(chunks)}")
+    total_msg = f"✅ Total chunks: {len(chunks)}"
+    print(total_msg)
+    yield total_msg + "\n"
 
     # 3. Store in Vector DB
-    print("\n💾 STEP 3/3: Storing in ChromaDB...")
+    step_msg = "\n💾 STEP 3/3: Storing in ChromaDB..."
+    print(step_msg)
+    yield step_msg + "\n"
     vector_store = get_vector_store()
     
     # Clear existing documents to support repository switching
@@ -199,9 +216,6 @@ def ingest_repository(repo_path: str) -> dict:
         print(f"   ❌ Failed to add documents: {e}")
         raise
 
-    print("\n" + "="*60)
-    print(f"🎉 INGESTION COMPLETE!")
-    print(f"   📁 Files: {len(raw_documents)}")
-    print(f"   🧩 Chunks: {len(chunks)}")
-    print("="*60 + "\n")
-    return {"message": "Ingestion successful", "chunks_count": len(chunks), "files_count": len(raw_documents)}
+    complete_msg = "\n" + "="*60 + "\n🎉 INGESTION COMPLETE!\n" + f"   📁 Files: {len(raw_documents)}\n" + f"   🧩 Chunks: {len(chunks)}\n" + "="*60
+    print(complete_msg)
+    yield complete_msg + "\n"
