@@ -15,35 +15,30 @@ async def chat_stream(query: str) -> AsyncIterable[str]:
     Generates a streaming response for the given query using RAG.
     """
     vector_store = get_vector_store()
-    retriever = vector_store.as_retriever(search_kwargs={"k": 8})
-    
     llm = get_llm()
 
     # Prompt template for RAG responses
-    template = """You are CodeScope, an expert coding assistant with deep knowledge of software development.
-
-**Your Mission:**
-Provide comprehensive, detailed, and professional responses using the codebase context below.
-
-**Response Guidelines:**
-1. **Language Matching**: CRITICAL - Detect the user's question language and respond in the EXACT SAME language
-   - Turkish question → Detailed Turkish response  
-    # Prompt template for RAG responses with source citations
     template = """You are CodeScope, an intelligent bilingual coding assistant.
 
 Use the following codebase context to answer the user's question.
-If the context doesn't contain the answer, say so clearly.
 
-**IMPORTANT LANGUAGE RULE:**
-- If question is in Turkish → Answer in Turkish
-- If question is in English → Answer in English
-- Match the user's language EXACTLY
+**CRITICAL LANGUAGE RULE - READ CAREFULLY:**
+1. DETECT the question language FIRST
+2. Use ONLY that language for the ENTIRE response
+3. If question is in Turkish → ENTIRE answer in Turkish (no English mixing!)
+4. If question is in English → ENTIRE answer in English (no Turkish mixing!)
+5. NEVER switch languages mid-response
+6. ALL technical terms, code explanations, examples MUST be in the detected language
 
-Provide detailed, helpful answers with:
-- Code examples when relevant
-- Step-by-step explanations
-- Best practices
-- Clear formatting (Markdown: headings, code blocks, lists, bold)
+**Examples:**
+- Turkish question: "Bu kod ne yapar?" → Answer fully in Turkish
+- English question: "What does this code do?" → Answer fully in English
+
+**Response Structure:**
+- Start with a summary in detected language
+- Provide detailed explanation in detected language
+- Add code examples with comments in detected language
+- Use proper formatting (headings, code blocks, lists)
 
 Context from codebase:
 {context}
@@ -51,7 +46,7 @@ Context from codebase:
 Question:
 {question}
 
-Answer (in the SAME language as the question):
+Your detailed answer (in the SAME language as question, NO language mixing):
 """
     
     prompt = PromptTemplate(
@@ -59,12 +54,6 @@ Answer (in the SAME language as the question):
         input_variables=["context", "question"]
     )
 
-    print("\n" + "─"*60)
-    print("🤖 RAG QUERY")
-    print("─"*60)
-    print(f"💬 Query: {query}")
-    print(f"🔍 Searching ChromaDB...")
-    
     # Retrieve relevant documents (top 8)
     try:
         docs = vector_store.similarity_search(query, k=8)
@@ -73,73 +62,52 @@ Answer (in the SAME language as the question):
         if len(docs) == 0:
             print("⚠️  WARNING: No relevant chunks found!")
             print("─"*60 + "\n")
-            yield "⚠️ I couldn't find any relevant code in the repository for your question.\n\n"
-            yield "Try:\n"
-            yield "- Asking a more general question\n"
-            yield "- Checking if the repository was ingested correctly\n"
-            yield "- Opening a different repository"
+            yield "⚠️ **ChromaDB boş! Lütfen Settings'den repo'yu açın (Open Repository).**\n\n"
+            yield "Repository açtıktan sonra:\n"
+            yield "1. Backend terminal'de '🎉 INGESTION COMPLETE!' mesajını bekleyin\n"
+            yield "2. Daha sonra sorularınızı sorun\n"
             return
             
         print(f"📚 Using {len(docs)} code chunks as context")
         print("─"*60 + "\n")
         
-    except Exception as e:
-        print(f"❌ ERROR during retrieval: {e}")
-        print("─"*60 + "\n")
-        yield f"❌ **Search Error:** {str(e)}\n\nPlease try again or open a different repository."
-        return  # Try to get scores for debugging (may not always work)
-    try:
-        docs_with_scores = vector_store.similarity_search_with_relevance_scores(query, k=8)
-        if docs_with_scores:
-            top_scores = [f"{score:.3f}" for _, score in docs_with_scores[:5]]
-            print(f"📈 Scores: {', '.join(top_scores)}")
-    except Exception as e:
-        print(f"⚠️  Score calculation failed: {e}")
-    
-    print("─"*60)
-    
-    # Handle case where no chunks found
-    if not docs:
-        print("❌ WARNING: No chunks found in ChromaDB!")
-        print("💡 Tip: Make sure repository was ingested successfully")
-        yield "⚠️ **ChromaDB boş! Lütfen Settings'den repo'yu açın (Open Repository).**\n\n"
-        yield "Genel bilgimle cevaplıyorum:\n\n"
-        # Continue with empty context
-    else:
-        print(f"📚 Using {len(docs)} code chunks as context")
-    
-    # Generate source citations (ChatGPT-style)
-    if docs:
-        yield "\n**📚 Kullanılan Kaynaklar:**\n\n"
+        # Show sources BEFORE generating answer (like ChatGPT/Gemini)
+        yield "\n **Araştırılan Dosyalar:**\n\n"
         
         unique_sources = {}
-        for idx, doc in enumerate(docs, 1):
+        for doc in docs:
             filename = doc.metadata.get('filename', 'Unknown')
             rel_path = doc.metadata.get('relative_path', filename)
             language = doc.metadata.get('language', 'unknown')
             
-            # Deduplicate by filename
-            if filename not in unique_sources:
-                unique_sources[filename] = {
-                    'index': idx,
-                    'path': rel_path,
-                    'language': language
+            if rel_path not in unique_sources:
+                unique_sources[rel_path] = {
+                    'filename': filename,
+                    'language': language,
+                    'path': rel_path
                 }
-                yield f"**[{idx}]** `{filename}` "
-                yield f"*({language})* - {rel_path}\n\n"
         
-        yield "---\n\n"
+        for idx, (path, info) in enumerate(unique_sources.items(), 1):
+            yield f"{idx}. 📄 `{info['filename']}` ({info['language']})\n"
+            yield f"   └─ {path}\n"
+        
+        yield "\n💭 **Cevap hazırlanıyor...**\n\n"
+        
+    except Exception as e:
+        print(f"❌ ERROR during retrieval: {e}")
+        print("─"*60 + "\n")
+        yield f"❌ **Arama Hatası:** {str(e)}\n\nLütfen Settings'den repo'yu tekrar açın."
+        return
     
-    # Prepare context for LLM
-    context_text = "\n\n".join([doc.page_content for doc in docs])
+    # Prepare context from retrieved documents
+    context = "\n\n".join([doc.page_content for doc in docs])
     
-    formatted_prompt = prompt.format(context=context_text, question=query)
+    # Create the RAG chain
+    chain = prompt | llm
     
-    # Stream the response from Ollama
-    
-    # Stream the response from Ollama
+    # Stream the response
     try:
-        async for chunk in llm.astream(formatted_prompt):
+        for chunk in chain.stream({"context": context, "question": query}):
             yield chunk
     except Exception as e:
         error_msg = str(e)
