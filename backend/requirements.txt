@@ -13,3 +13,4 @@ requests
 aiofiles
 watchdog
 pydantic-settings
+rapidfuzz
