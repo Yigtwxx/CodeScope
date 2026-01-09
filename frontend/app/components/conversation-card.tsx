@@ -19,7 +19,7 @@ export function ConversationCard({
     onDelete,
     onRename
 }: ConversationCardProps) {
-    const [isEditing, isSetEditing] = useState(false)
+    const [isEditing, setIsEditing] = useState(false)
     const [editTitle, setEditTitle] = useState(conversation.title)
 
     const handleRename = () => {
@@ -41,8 +41,8 @@ export function ConversationCard({
     return (
         <div
             className={`group p-3 rounded-lg border transition-all cursor-pointer hover:bg-white/5 ${isActive
-                    ? 'bg-blue-500/10 border-blue-500/30'
-                    : 'bg-black/20 border-white/10 hover:border-white/20'
+                ? 'bg-blue-500/10 border-blue-500/30'
+                : 'bg-black/20 border-white/10 hover:border-white/20'
                 }`}
             onClick={!isEditing ? onClick : undefined}
         >
