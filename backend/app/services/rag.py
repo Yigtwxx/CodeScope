@@ -15,28 +15,54 @@ async def chat_stream(query: str) -> AsyncIterable[str]:
     Generates a streaming response for the given query using RAG.
     """
     vector_store = get_vector_store()
-    retriever = vector_store.as_retriever(search_kwargs={"k": 5})
+    retriever = vector_store.as_retriever(search_kwargs={"k": 8})
     
     llm = get_llm()
 
     # Prompt template for RAG responses
-    template = """You are CodeScope, an intelligent coding assistant.
-Use the following codebase context to answer the user's question.
-If the context doesn't contain the answer, say so clearly, but you may provide general knowledge if helpful.
-Always use Markdown formatting (code blocks, bold, lists).
+    template = """You are CodeScope, an expert coding assistant with deep knowledge of software development.
 
-IMPORTANT: Detect the language of the user's question and respond in the SAME language.
-- If the question is in Turkish, respond in Turkish.
-- If the question is in English, respond in English.
-- Match the language naturally and fluently.
+**Your Mission:**
+Provide comprehensive, detailed, and professional responses using the codebase context below.
 
-Context:
+**Response Guidelines:**
+1. **Language Matching**: CRITICAL - Detect the user's question language and respond in the EXACT SAME language
+   - Turkish question → Detailed Turkish response  
+   - English question → Detailed English response
+   - Use natural, fluent, professional language
+
+2. **Response Quality:**
+   - Give thorough, well-structured explanations
+   - Include relevant code examples when helpful
+   - Explain the "why" and "how", not just the "what"
+   - Add practical usage examples if applicable
+   - If files are referenced, explain their purpose and relationships
+
+3. **Formatting:**
+   - Use clear headings and sections
+   - Use code blocks with proper language tags (```python, ```javascript, etc.)
+   - Use bullet points for lists
+   - Use **bold** for important terms
+   - Use tables when comparing multiple items
+
+4. **Context Handling:**
+   - If context fully answers the question: Give a detailed, comprehensive response
+   - If context partially answers: Use context + your knowledge, clearly distinguishing both
+   - If context doesn't answer: Clearly state this, then provide helpful general guidance if relevant
+
+5. **Turkish Responses:** 
+   - Use professional, technical Turkish
+   - Maintain clarity and precision
+   - Avoid overly casual language
+   - Provide detailed explanations, not brief summaries
+
+**Codebase Context:**
 {context}
 
-Question:
+**User Question:**
 {question}
 
-Answer:
+**Your Detailed Response:**
 """
     
     prompt = PromptTemplate(
@@ -44,11 +70,68 @@ Answer:
         input_variables=["context", "question"]
     )
 
-    # Retrieve relevant documents and stream LLM response
-    docs = await retriever.ainvoke(query)
+    # Retrieve relevant documents with similarity scores
+    print("\n" + "─"*60)
+    print("🤖 RAG QUERY")
+    print("─"*60)
+    print(f"💬 Query: {query}")
+    print(f"🔍 Searching ChromaDB...")
+    
+    # Use simple similarity search (ChromaDB distance scores can be negative)
+    # So we just take top-k without threshold filtering
+    docs = vector_store.similarity_search(query, k=8)
+    
+    print(f"📊 Retrieved: {len(docs)} chunks")
+    
+    # Try to get scores for debugging (may not always work)
+    try:
+        docs_with_scores = vector_store.similarity_search_with_relevance_scores(query, k=8)
+        if docs_with_scores:
+            top_scores = [f"{score:.3f}" for _, score in docs_with_scores[:5]]
+            print(f"📈 Scores: {', '.join(top_scores)}")
+    except Exception as e:
+        print(f"⚠️  Score calculation failed: {e}")
+    
+    print("─"*60)
+    
+    # Handle case where no chunks found
+    if not docs:
+        print("❌ WARNING: No chunks found in ChromaDB!")
+        print("💡 Tip: Make sure repository was ingested successfully")
+        yield "⚠️ **ChromaDB boş! Lütfen Settings'den repo'yu açın (Open Repository).**\n\n"
+        yield "Genel bilgimle cevaplıyorum:\n\n"
+        # Continue with empty context
+    else:
+        print(f"📚 Using {len(docs)} code chunks as context")
+    
+    # Generate source citations (ChatGPT-style)
+    if docs:
+        yield "\n**📚 Kullanılan Kaynaklar:**\n\n"
+        
+        unique_sources = {}
+        for idx, doc in enumerate(docs, 1):
+            filename = doc.metadata.get('filename', 'Unknown')
+            rel_path = doc.metadata.get('relative_path', filename)
+            language = doc.metadata.get('language', 'unknown')
+            
+            # Deduplicate by filename
+            if filename not in unique_sources:
+                unique_sources[filename] = {
+                    'index': idx,
+                    'path': rel_path,
+                    'language': language
+                }
+                yield f"**[{idx}]** `{filename}` "
+                yield f"*({language})* - {rel_path}\n\n"
+        
+        yield "---\n\n"
+    
+    # Prepare context for LLM
     context_text = "\n\n".join([doc.page_content for doc in docs])
     
     formatted_prompt = prompt.format(context=context_text, question=query)
+    
+    # Stream the response from Ollama
     
     # Stream the response from Ollama
     try:
