@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 interface SettingsModalProps {
     open: boolean
     onOpenChange: (open: boolean) => void
-    onIngestSuccess: () => void
+    onIngestSuccess: (path: string) => void
 }
 
 export function SettingsModal({ open, onOpenChange, onIngestSuccess }: SettingsModalProps) {
@@ -44,13 +44,15 @@ export function SettingsModal({ open, onOpenChange, onIngestSuccess }: SettingsM
             }
 
             const data = await response.json()
-            alert(`Successfully ingested ${data.files_count} files and ${data.chunks_count} chunks.`)
-            onIngestSuccess()
+            // alert(`Repository opened! Indexing started in background.`) // Optional: remove alert for smoother flow
+            onIngestSuccess(sanitizedPath)
             onOpenChange(false)
         } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
             console.error("Ingestion error:", err)
             if (err.name === 'AbortError') {
-                setError("Ingestion timed out. The repository might be too large.")
+                setError("Ingestion timed out. The repository might be too large. Try a smaller repo or increase the timeout.")
+            } else if (err.message.includes("Failed to fetch")) {
+                setError("Could not connect to backend. Is it running?")
             } else {
                 setError(err.message || "An unexpected error occurred")
             }
@@ -86,7 +88,7 @@ export function SettingsModal({ open, onOpenChange, onIngestSuccess }: SettingsM
                 </div>
                 <DialogFooter>
                     <Button type="submit" onClick={handleIngest} disabled={isLoading}>
-                        {isLoading ? "Ingesting..." : "Ingest Repository"}
+                        {isLoading ? "Opening..." : "Open Repository"}
                     </Button>
                 </DialogFooter>
             </DialogContent>
