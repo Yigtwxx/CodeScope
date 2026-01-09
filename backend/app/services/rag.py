@@ -25,6 +25,11 @@ Use the following codebase context to answer the user's question.
 If the context doesn't contain the answer, say so clearly, but you may provide general knowledge if helpful.
 Always use Markdown formatting (code blocks, bold, lists).
 
+IMPORTANT: Detect the language of the user's question and respond in the SAME language.
+- If the question is in Turkish, respond in Turkish.
+- If the question is in English, respond in English.
+- Match the language naturally and fluently.
+
 Context:
 {context}
 
