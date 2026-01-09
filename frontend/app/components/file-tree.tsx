@@ -126,11 +126,11 @@ export function FileTree({ rootPath, onSelectFile }: FileTreeProps) {
     }, [rootPath])
 
     return (
-        <div className="h-full border-r border-white/10 bg-black/20 flex flex-col">
-            <div className="p-3 border-b border-white/10 font-bold text-white/80 bg-black/10">Explorer</div>
+        <div className="h-full flex flex-col">
+            <div className="p-3 border-b border-white/10 font-bold text-white/80">Explorer</div>
             <div className="flex-1 overflow-auto p-2">
                 {rootNode ? (
-                    <FileTreeNode node={rootNode} level={0} onSelect={onSelectFile} />
+                    <FileTreeNode key={rootNode.path} node={rootNode} level={0} onSelect={onSelectFile} />
                 ) : (
                     <div className="text-white/40 text-sm p-4 text-center">No repository loaded. Go to Settings.</div>
                 )}
