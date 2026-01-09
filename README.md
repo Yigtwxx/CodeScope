@@ -3,41 +3,87 @@
 > **Your Privacy-First, Fully Local AI Coding Assistant.**
 > Chat with your codebase using local LLMs (Ollama) and ChromaDB. No data ever leaves your machine.
 
----
-
-## 📖 Overview
-
-**CodeScope** is a powerful Retrieval-Augmented Generation (RAG) tool designed for developers who want to leverage AI for code understanding without compromising privacy. By running everything locally—from the Large Language Model (LLM) to the Vector Database—CodeScope ensures your proprietary code stays secure.
-
-It indexes your local repositories, embeds the code using state-of-the-art sentence transformers, and allows you to chat naturally with your project. Ask questions like *"How does the authentication flow work?"* or *"Where is the user validation logic?"* and get context-aware answers instantly.
-
-## ✨ Features
-
-- **🔒 100% Private & Local**: Zero external API calls. Your code is processed and stored entirely on your device.
-- **⚡ Real-Time Streaming**: Get instant, streaming responses from your local LLM (powered by Ollama).
-- **🧠 Smart Context Retrieval**: Uses `ChromaDB` and `all-MiniLM-L6-v2` embeddings to find the most relevant code chunks for your query.
-- **📂 One-Click Ingestion**: detailed support for clearing old indexes and re-ingesting new repositories seamlessly.
-- **🎨 Modern Developer UI**: A sleek, responsive interface built with **Next.js 14**, **React 19**, and **Tailwind CSS**.
-- **🛠 Multi-Language Support**: Out-of-the-box support for Python, JavaScript, TypeScript, Java, Go, C++, Rust, and many more.
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
+![Next.js](https://img.shields.io/badge/Next.js-14-black)
+![Ollama](https://img.shields.io/badge/Ollama-Local%20LLM-orange)
 
 ---
 
-## 🛠 Tech Stack
+## 📖 Project Vision
 
-### Frontend
-- **Framework**: Next.js 14 (App Router)
-- **Library**: React 19
-- **Styling**: Tailwind CSS, Shadcn/UI
-- **Icons**: Lucide React
-- **Syntax Highlighting**: React Syntax Highlighter
+In an era where proprietary codebases are the most valuable assets of a company, uploading code to cloud-based LLMs poses a significant security risk. **CodeScope** was born from a simple necessity: **High-quality code assistance without the privacy trade-off.**
 
-### Backend
-- **Framework**: FastAPI (Python)
-- **Server**: Uvicorn
-- **AI Orchestration**: LangChain
-- **Vector Database**: ChromaDB (Persistent local storage)
-- **Embeddings**: SentenceTransformers (`all-MiniLM-L6-v2`)
-- **LLM Provider**: Ollama (Llama 3, Mistral, etc.)
+Unlike browser-based tools or plugins that send your snippets to remote servers, CodeScope runs the entire RAG (Retrieval-Augmented Generation) pipeline locally on your machine. From the database that stores your code's mathematical representations to the LLM that generates the answer—**you own the entire stack.**
+
+---
+
+## 🏗️ Architecture & Technology Stack
+
+We carefully selected every component of CodeScope to balance performance, developer experience, and the "local-first" philosophy. Here is a deep dive into our choices:
+
+### 🧠 The Backend Core (Python)
+
+#### **FastAPI** (The API Framework)
+**Why we chose it:** Speed and Concurrency.
+FastAPI is one of the fastest Python frameworks available, built on top of Starlette and Pydantic.
+- **Async by Design:** CodeScope relies heavily on streaming responses (sending chunks of text as the AI generates them). FastAPI's native `async/await` support is crucial for managing these websocket-like streams without blocking the server.
+- **Type Safety:** It uses Python type hints for data validation, ensuring that data flowing between the frontend and the LLM is always structured correctly.
+
+#### **LangChain** (The Orchestrator)
+**Why we chose it:** Modular RAG Pipelines.
+LangChain provides the abstraction layer that connects our data sources to the LLM. It handles the complex logic of:
+- **Prompt Engineering:** Structuring the context and question in a way the LLM understands best.
+- **Document Loading:** Unified interfaces for reading `.py`, `.ts`, `.md`, and other files.
+- **Chain Management:** Connecting the "Retrieval" step with the "Generation" step seamlessly.
+
+#### **ChromaDB** (The Vector Database)
+**Why we chose it:** Embedded & Serverless.
+Most vector databases (Pinecone, Milvus, Weaviate) require complex Docker setups or cloud subscriptions.
+- **Fully Embedded:** Chroma runs directly inside our Python process. It saves data to a simple local folder (`/chroma_db`).
+- **Ease of Use:** It automates the tokenization and embedding process, making it invisible to the user.
+- **Zero Overhead:** No background services or daemon processes are required when the app isn't running.
+
+#### **Ollama** (The LLM Runtime)
+**Why we chose it:** The "Docker" for LLMs.
+Running raw model weights (GGUF, PyTorch) is difficult and hardware-dependent. Ollama abstracts the GPU/CPU offloading, quantization, and model management. It provides a stable REST API that our backend consumes, allowing users to switch between `Llama 3`, `Mistral`, or `CodeLlama` with a single command.
+
+---
+
+### 🎨 The Frontend Experience (TypeScript)
+
+#### **Next.js 14** (The Framework)
+**Why we chose it:** The standard for React applications.
+We utilize the **App Router** for a robust file-system based routing mechanism. Next.js handles the API proxying and static asset serving efficiently, ensuring the UI loads instantly.
+
+#### **React 19** (The Library)
+**Why we chose it:** Cutting-edge User Interfaces.
+We are early adopters of React 19 to leverage the latest improvements in state management and DOM rendering performance.
+
+#### **Tailwind CSS & Shadcn/UI** (The Design System)
+**Why we chose it:** Aesthetic Minimalism & Customizability.
+- **Shadcn/UI** gives us accessible, high-quality components (Dialogs, Tabs, Inputs) that live inside our codebase, not as a black-box library.
+- **Tailwind** allows us to rapidly style these components to create a "Dark Mode" native application that feels like a professional IDE.
+
+---
+
+## ⚙️ How It Works (Under the Hood)
+
+### 1. Ingestion Pipeline
+When you click **"Ingest Repository"**, a complex workflow triggers:
+1.  **File Crawling**: The system walks through your directory, respecting `.gitignore` files to skip junk data.
+2.  **Validation**: A filter layer checks extensions (e.g., `user_controller.rb`, `App.tsx`) to ensure only text-based code files are processed.
+3.  **Chunking**: Large files are split into smaller segments (e.g., 1000 characters) with a 200-character "overlap". This ensures that context isn't lost at the cut points (e.g., a function definition isn't separated from its body).
+4.  **Embedding**: These chunks are passed to `sentence-transformers/all-MiniLM-L6-v2`. This model converts text into a 384-dimensional vector (a list of numbers representing meaning).
+5.  **Storage**: These vectors are saved into ChromaDB.
+
+### 2. Retrieval & Generation (RAG)
+When you ask **"How does login work?"**:
+1.  **Query Embedding**: Your question is converted into the same 384-dimensional vector format.
+2.  **Similarity Search**: ChromaDB calculates the "Cosine Similarity" between your question's vector and the thousands of code vectors. It finds the top 5 most similar chunks of code.
+3.  **Context Injection**: These 5 chunks are pasted into a hidden "System Prompt" sent to the LLM:
+    > "You are a helpful coding assistant. Use the following code snippets to answer the user's question..."
+4.  **Streaming**: The LLM (Ollama) generates the answer token by token, which flows through FastAPI to your UI in real-time.
 
 ---
 
@@ -140,25 +186,6 @@ npm run dev
     - 🧩 Chunk code into manageable pieces (1000 chars w/ overlap).
     - 💾 Store embeddings in local ChromaDB.
 5.  **Start Chatting**: Close the modal and ask questions about your code!
-
----
-
-## ⚙️ Configuration
-
-### Supported File Extensions
-CodeScope automatically indexes the following file types:
-`.py`, `.js`, `.ts`, `.tsx`, `.jsx`, `.md`, `.txt`, `.java`, `.go`, `.cpp`, `.c`, `.h`, `.cs`, `.php`, `.rb`, `.rs`, `.swift`, `.kt`
-
-### Changing the LLM Model
-By default, CodeScope uses `llama3`. To use a different model (e.g., `mistral` or `codellama`):
-
-1.  Pull the model in Ollama: `ollama pull mistral`
-2.  Open `backend/app/core/config.py`.
-3.  Update the `OLLAMA_MODEL` variable:
-    ```python
-    OLLAMA_MODEL: str = "mistral"
-    ```
-4.  Restart the backend server.
 
 ---
 
