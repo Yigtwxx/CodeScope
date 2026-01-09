@@ -1,6 +1,5 @@
 from typing import AsyncIterable
 from langchain_community.llms import Ollama
-# from langchain.chains import RetrievalQA
 from langchain_core.prompts import PromptTemplate
 from app.db.chroma import get_vector_store
 from app.core.config import settings
@@ -20,31 +19,27 @@ async def chat_stream(query: str) -> AsyncIterable[str]:
     
     llm = get_llm()
 
-    # Custom prompt template to include context
-    template = """
-    You are an intelligent coding assistant named CodeScope.
-    Use the following pieces of context from the codebase to answer the user's question.
-    If the context doesn't contain the answer, say "I couldn't find the answer in the provided codebase context,"
-    but you can still try to help based on your general knowledge if appropriate, but clarify that it's general knowledge.
-    Always structure your answer with Markdown (code blocks, bold text, lists).
+    # Prompt template for RAG responses
+    template = """You are CodeScope, an intelligent coding assistant.
+Use the following codebase context to answer the user's question.
+If the context doesn't contain the answer, say so clearly, but you may provide general knowledge if helpful.
+Always use Markdown formatting (code blocks, bold, lists).
 
-    Context:
-    {context}
+Context:
+{context}
 
-    Question:
-    {question}
+Question:
+{question}
 
-    Answer:
-    """
+Answer:
+"""
     
     prompt = PromptTemplate(
         template=template,
         input_variables=["context", "question"]
     )
 
-    # We use a custom chain setup for streaming
-    # Ideally, we retrieve docs first, then stream the LLM generation
-    
+    # Retrieve relevant documents and stream LLM response
     docs = await retriever.ainvoke(query)
     context_text = "\n\n".join([doc.page_content for doc in docs])
     
