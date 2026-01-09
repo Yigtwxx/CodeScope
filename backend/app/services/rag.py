@@ -28,41 +28,30 @@ Provide comprehensive, detailed, and professional responses using the codebase c
 **Response Guidelines:**
 1. **Language Matching**: CRITICAL - Detect the user's question language and respond in the EXACT SAME language
    - Turkish question → Detailed Turkish response  
-   - English question → Detailed English response
-   - Use natural, fluent, professional language
+    # Prompt template for RAG responses with source citations
+    template = """You are CodeScope, an intelligent bilingual coding assistant.
 
-2. **Response Quality:**
-   - Give thorough, well-structured explanations
-   - Include relevant code examples when helpful
-   - Explain the "why" and "how", not just the "what"
-   - Add practical usage examples if applicable
-   - If files are referenced, explain their purpose and relationships
+Use the following codebase context to answer the user's question.
+If the context doesn't contain the answer, say so clearly.
 
-3. **Formatting:**
-   - Use clear headings and sections
-   - Use code blocks with proper language tags (```python, ```javascript, etc.)
-   - Use bullet points for lists
-   - Use **bold** for important terms
-   - Use tables when comparing multiple items
+**IMPORTANT LANGUAGE RULE:**
+- If question is in Turkish → Answer in Turkish
+- If question is in English → Answer in English
+- Match the user's language EXACTLY
 
-4. **Context Handling:**
-   - If context fully answers the question: Give a detailed, comprehensive response
-   - If context partially answers: Use context + your knowledge, clearly distinguishing both
-   - If context doesn't answer: Clearly state this, then provide helpful general guidance if relevant
+Provide detailed, helpful answers with:
+- Code examples when relevant
+- Step-by-step explanations
+- Best practices
+- Clear formatting (Markdown: headings, code blocks, lists, bold)
 
-5. **Turkish Responses:** 
-   - Use professional, technical Turkish
-   - Maintain clarity and precision
-   - Avoid overly casual language
-   - Provide detailed explanations, not brief summaries
-
-**Codebase Context:**
+Context from codebase:
 {context}
 
-**User Question:**
+Question:
 {question}
 
-**Your Detailed Response:**
+Answer (in the SAME language as the question):
 """
     
     prompt = PromptTemplate(
@@ -70,20 +59,35 @@ Provide comprehensive, detailed, and professional responses using the codebase c
         input_variables=["context", "question"]
     )
 
-    # Retrieve relevant documents with similarity scores
     print("\n" + "─"*60)
     print("🤖 RAG QUERY")
     print("─"*60)
     print(f"💬 Query: {query}")
     print(f"🔍 Searching ChromaDB...")
     
-    # Use simple similarity search (ChromaDB distance scores can be negative)
-    # So we just take top-k without threshold filtering
-    docs = vector_store.similarity_search(query, k=8)
-    
-    print(f"📊 Retrieved: {len(docs)} chunks")
-    
-    # Try to get scores for debugging (may not always work)
+    # Retrieve relevant documents (top 8)
+    try:
+        docs = vector_store.similarity_search(query, k=8)
+        print(f"📊 Retrieved: {len(docs)} chunks")
+        
+        if len(docs) == 0:
+            print("⚠️  WARNING: No relevant chunks found!")
+            print("─"*60 + "\n")
+            yield "⚠️ I couldn't find any relevant code in the repository for your question.\n\n"
+            yield "Try:\n"
+            yield "- Asking a more general question\n"
+            yield "- Checking if the repository was ingested correctly\n"
+            yield "- Opening a different repository"
+            return
+            
+        print(f"📚 Using {len(docs)} code chunks as context")
+        print("─"*60 + "\n")
+        
+    except Exception as e:
+        print(f"❌ ERROR during retrieval: {e}")
+        print("─"*60 + "\n")
+        yield f"❌ **Search Error:** {str(e)}\n\nPlease try again or open a different repository."
+        return  # Try to get scores for debugging (may not always work)
     try:
         docs_with_scores = vector_store.similarity_search_with_relevance_scores(query, k=8)
         if docs_with_scores:
