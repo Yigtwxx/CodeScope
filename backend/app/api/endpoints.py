@@ -1,7 +1,7 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from app.services.ingestion import ingest_repository
+from app.services.ingestion import ingest_repository_stream
 from app.services.rag import chat_stream
 
 router = APIRouter()
@@ -13,7 +13,7 @@ class ChatRequest(BaseModel):
     message: str
 
 @router.post("/ingest")
-async def ingest_endpoint(request: IngestRequest, background_tasks: BackgroundTasks):
+async def ingest_endpoint(request: IngestRequest):
     try:
         print(f"\n🌐 API REQUEST: /ingest")
         print(f"📂 Path: {request.repo_path}")
@@ -23,11 +23,11 @@ async def ingest_endpoint(request: IngestRequest, background_tasks: BackgroundTa
         if not os.path.exists(request.repo_path):
              raise HTTPException(status_code=404, detail="Path not found")
 
-        # Run ingestion in background
-        background_tasks.add_task(ingest_repository, request.repo_path)
-        
-        print(f"✅ Ingestion started in background")
-        return {"message": "Repository opened. Ingestion started in background.", "status": "processing"}
+        # Stream ingestion progress
+        return StreamingResponse(
+            ingest_repository_stream(request.repo_path),
+            media_type="text/event-stream"
+        )
     except Exception as e:
         print(f"❌ Ingestion setup failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
