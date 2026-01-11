@@ -43,6 +43,16 @@ app.add_middleware(
 
 from app.api.files import router as files_router
 
+# Health Check Endpoint
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for monitoring and uptime verification."""
+    return {
+        "status": "healthy",
+        "service": settings.PROJECT_NAME,
+        "version": settings.VERSION
+    }
+
 app.include_router(api_router, prefix=settings.API_V1_STR)
 app.include_router(files_router, prefix="/api/files", tags=["files"])
 
