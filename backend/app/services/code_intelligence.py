@@ -1,6 +1,8 @@
 """
-Code Intelligence Service - AST parsing to extract functions, classes, and code entities.
+Code Intelligence Service - AST (Soyut Sözdizimi Ağacı) analizcisi.
+Fonksiyon ve sınıf tanımlarını koddan çıkarmak için kullanılır.
 """
+import json
 from typing import List, Dict, Any
 import tree_sitter_python as tspython
 import tree_sitter_javascript as tsjavascript
@@ -9,23 +11,24 @@ from tree_sitter import Language, Parser
 from langchain_core.documents import Document
 
 
-# Initialize tree-sitter languages
+# Tree-sitter dillerini başlat (Python, JS, TS)
 PY_LANGUAGE = Language(tspython.language())
 JS_LANGUAGE = Language(tsjavascript.language())
 TS_LANGUAGE = Language(tstypescript.language_typescript())
 
 
 class CodeEntity:
-    """Represents a code entity (function, class, etc.)"""
+    """Kod varlığını temsil eder (fonksiyon, sınıf vb.)"""
     
     def __init__(self, entity_type: str, name: str, start_line: int, end_line: int, file_path: str):
-        self.entity_type = entity_type
-        self.name = name
-        self.start_line = start_line
-        self.end_line = end_line
-        self.file_path = file_path
+        self.entity_type = entity_type # Varlık türü (function, class)
+        self.name = name # Varlığın adı
+        self.start_line = start_line # Başlangıç satırı
+        self.end_line = end_line # Bitiş satırı
+        self.file_path = file_path # Dosya yolu
     
     def to_dict(self) -> Dict[str, Any]:
+        """Sınıfı sözlük yapısına çevirir."""
         return {
             'type': self.entity_type,
             'name': self.name,
@@ -36,9 +39,10 @@ class CodeEntity:
 
 
 class ASTParser:
-    """Parse source code and extract entities using tree-sitter."""
+    """Kaynak kodunu işler ve tree-sitter kullanarak varlıkları çıkarır."""
     
     def __init__(self):
+        # Desteklenen diller için ayrıştırıcıları (parsers) oluştur
         self.parsers = {
             '.py': self._create_parser(PY_LANGUAGE),
             '.js': self._create_parser(JS_LANGUAGE),
@@ -48,12 +52,12 @@ class ASTParser:
         }
     
     def _create_parser(self, language: Language) -> Parser:
-        """Create a tree-sitter parser for a language."""
+        """Belirtilen dil için tree-sitter ayrıştırıcısı oluşturur."""
         parser = Parser(language)
         return parser
     
     def parse_python(self, source_code: bytes, file_path: str) -> List[CodeEntity]:
-        """Extract functions and classes from Python code."""
+        """Python kodundan fonksiyon ve sınıfları çıkarır."""
         parser = self.parsers.get('.py')
         if not parser:
             return []
@@ -63,10 +67,10 @@ class ASTParser:
         
         entities = []
         
-        # Query for functions and classes
+        # Fonksiyon ve sınıfları bulmak için düğümleri (nodes) gez
         def traverse(node):
             if node.type == 'function_definition':
-                # Extract function name
+                # Fonksiyon adını al
                 name_node = node.child_by_field_name('name')
                 if name_node:
                     entities.append(CodeEntity(
@@ -78,7 +82,7 @@ class ASTParser:
                     ))
             
             elif node.type == 'class_definition':
-                # Extract class name
+                # Sınıf adını al
                 name_node = node.child_by_field_name('name')
                 if name_node:
                     entities.append(CodeEntity(
@@ -89,7 +93,7 @@ class ASTParser:
                         file_path=file_path
                     ))
             
-            # Recurse into children
+            # Alt düğümlere (children) yinelemeli olarak git
             for child in node.children:
                 traverse(child)
         
@@ -97,7 +101,7 @@ class ASTParser:
         return entities
     
     def parse_javascript(self, source_code: bytes, file_path: str) -> List[CodeEntity]:
-        """Extract functions and classes from JavaScript/TypeScript code."""
+        """JavaScript/TypeScript kodundan fonksiyon ve sınıfları çıkarır."""
         extension = '.ts' if file_path.endswith(('.ts', '.tsx')) else '.js'
         parser = self.parsers.get(extension)
         if not parser:
@@ -109,7 +113,7 @@ class ASTParser:
         entities = []
         
         def traverse(node):
-            # Function declarations
+            # Fonksiyon bildirimleri
             if node.type in ['function_declaration', 'function']:
                 name_node = node.child_by_field_name('name')
                 if name_node:
@@ -121,9 +125,9 @@ class ASTParser:
                         file_path=file_path
                     ))
             
-            # Arrow functions assigned to variables
+            # Değişkene atanan ok (arrow) fonksiyonlar
             elif node.type == 'lexical_declaration':
-                # Look for: const myFunc = () => {}
+                # Örnek: const myFunc = () => {}
                 for child in node.children:
                     if child.type == 'variable_declarator':
                         name_node = child.child_by_field_name('name')
@@ -137,7 +141,7 @@ class ASTParser:
                                 file_path=file_path
                             ))
             
-            # Class declarations
+            # Sınıf bildirimleri
             elif node.type == 'class_declaration':
                 name_node = node.child_by_field_name('name')
                 if name_node:
@@ -149,7 +153,7 @@ class ASTParser:
                         file_path=file_path
                     ))
             
-            # Recurse
+            # Yinelemeli işlem
             for child in node.children:
                 traverse(child)
         
@@ -158,15 +162,15 @@ class ASTParser:
     
     def parse_file(self, source_code: str, file_path: str, extension: str) -> List[CodeEntity]:
         """
-        Parse a file and extract code entities.
+        Bir dosyayı ayrıştırır ve kod varlıklarını çıkarır.
         
         Args:
-            source_code: Source code as string
-            file_path: Path to the file
-            extension: File extension (e.g., '.py', '.js')
+            source_code: String olarak kaynak kod
+            file_path: Dosyanın yolu
+            extension: Dosya uzantısı (ör. '.py', '.js')
         
         Returns:
-            List of extracted code entities
+            Çıkarılan kod varlıklarının listesi
         """
         try:
             source_bytes = source_code.encode('utf-8')
@@ -183,11 +187,11 @@ class ASTParser:
             return []
 
 
-# Global parser instance
+# Global ayrıştırıcı (parser) örneği
 _ast_parser = None
 
 def get_ast_parser() -> ASTParser:
-    """Get or create global AST parser instance."""
+    """Global AST parser örneğini getirir veya oluşturur."""
     global _ast_parser
     if _ast_parser is None:
         _ast_parser = ASTParser()
@@ -196,13 +200,13 @@ def get_ast_parser() -> ASTParser:
 
 def extract_code_entities(documents: List[Document]) -> Dict[str, List[CodeEntity]]:
     """
-    Extract code entities (functions, classes) from documents.
+    Belgelerden (documents) kod varlıklarını (fonksiyonlar, sınıflar) çıkarır.
     
     Args:
-        documents: List of documents to parse
+        documents: Ayrıştırılacak belgelerin listesi
     
     Returns:
-        Dictionary mapping file paths to lists of entities
+        Dosya yollarını varlık listeleriyle eşleştiren sözlük
     """
     parser = get_ast_parser()
     entities_by_file = {}
@@ -214,7 +218,7 @@ def extract_code_entities(documents: List[Document]) -> Dict[str, List[CodeEntit
         file_path = doc.metadata.get('source', '')
         extension = doc.metadata.get('extension', '')
         
-        # Only parse supported languages
+        # Sadece desteklenen dilleri ayrıştır
         if extension not in ['.py', '.js', '.jsx', '.ts', '.tsx']:
             continue
         
@@ -222,7 +226,7 @@ def extract_code_entities(documents: List[Document]) -> Dict[str, List[CodeEntit
         
         if entities:
             entities_by_file[file_path] = entities
-            # Count entities
+            # Varlıkları say
             for entity in entities:
                 if entity.entity_type == 'function':
                     total_functions += 1
@@ -230,31 +234,34 @@ def extract_code_entities(documents: List[Document]) -> Dict[str, List[CodeEntit
                     total_classes += 1
     
     if total_functions > 0 or total_classes > 0:
-        print(f"🧠 Code Intelligence: Extracted {total_functions} functions, {total_classes} classes from {len(entities_by_file)} files")
+        print(f"🧠 Code Intelligence: {len(entities_by_file)} dosyadan {total_functions} fonksiyon, {total_classes} sınıf çıkarıldı")
     
     return entities_by_file
 
 
 def add_entities_to_metadata(chunks: List[Document], entities_by_file: Dict[str, List[CodeEntity]]) -> List[Document]:
     """
-    Add extracted code entities to chunk metadata.
+    Çıkarılan kod varlıklarını belge parçalarının (chunks) metadatalarına ekler.
     
     Args:
-        chunks: Document chunks
-        entities_by_file: Entities organized by file
+        chunks: Belge parçaları
+        entities_by_file: Dosyaya göre organize edilmiş varlıklar
     
     Returns:
-        Chunks with enriched metadata
+        Zenginleştirilmiş metadataya sahip parçalar
     """
     for chunk in chunks:
         file_path = chunk.metadata.get('source', '')
         
         if file_path in entities_by_file:
-            # Find entities that overlap with this chunk's line range
-            # (This requires adding line info to chunks, which we'll skip for now)
-            # For simplicity, just add all entities from the file
+            # Bu parçayla (chunk) örtüşen varlıkları bul
+            # (Şimdilik basitlik adına dosyadaki tüm varlıkları ekliyoruz)
             entities = entities_by_file[file_path]
-            chunk.metadata['code_entities'] = [e.to_dict() for e in entities]
+            
+            # Varlıkları JSON string'e çevir (ChromaDB sadece ilkel tipleri destekler)
+            chunk.metadata['code_entities'] = json.dumps([e.to_dict() for e in entities])
+            chunk.metadata['entity_count'] = len(entities)
             chunk.metadata['has_code_intelligence'] = True
     
     return chunks
+
