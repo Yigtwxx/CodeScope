@@ -173,6 +173,20 @@ def ingest_repository_stream(repo_path: str):
     total_msg = f"✅ Total chunks: {len(chunks)}"
     print(total_msg)
     yield total_msg + "\n"
+    
+    # 2.5. Extract Code Intelligence (AST Parsing)
+    try:
+        from app.services.code_intelligence import extract_code_entities, add_entities_to_metadata
+        print("\n🧠 Extracting code intelligence (functions, classes)...")
+        yield "\n🧠 Extracting code intelligence...\n"
+        
+        entities_by_file = extract_code_entities(raw_documents)
+        if entities_by_file:
+            chunks = add_entities_to_metadata(chunks, entities_by_file)
+            yield "✅ Code intelligence extracted\n"
+    except Exception as e:
+        print(f"⚠️  Code intelligence failed (non-critical): {e}")
+        yield f"⚠️  Code intelligence skipped: {str(e)}\n"
 
     # 3. Store in Vector DB
     step_msg = "\n💾 STEP 3/3: Storing in ChromaDB..."
