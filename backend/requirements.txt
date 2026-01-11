@@ -1,16 +1,23 @@
-fastapi
-uvicorn
+# Core Framework
+fastapi==0.115.12
+uvicorn==0.37.0
+pydantic==2.10.6
+pydantic-settings==2.7.2
 
-langchain
-langchain-community
-langchain-huggingface
+# LangChain & RAG
+langchain==0.3.20
+langchain-community==0.3.19
+langchain-huggingface==0.1.3
 
-chromadb
-pydantic
-sentence-transformers
-python-multipart
-requests
-aiofiles
-watchdog
-pydantic-settings
-rapidfuzz
+# Vector Database
+chromadb==0.5.26
+
+# ML & Embeddings
+sentence-transformers==3.4.1
+
+# Utilities
+python-multipart==0.0.20
+requests==2.33.0
+aiofiles==25.1.0
+watchdog==6.0.0
+rapidfuzz==3.12.0
