@@ -1,10 +1,11 @@
 @echo off
 echo Starting CodeScope...
 
-:: Force UTF-8 for Python to handle emojis
+:: Emoji destegi icin Python'u UTF-8'e zorla
 set PYTHONIOENCODING=utf-8
-:: Set console code page to UTF-8
+:: Konsol kod sayfasini UTF-8 olarak ayarla
 chcp 65001
 
+:: Frontend klasorune git ve uygulamayi baslat
 cd frontend
 call npm run dev:all
