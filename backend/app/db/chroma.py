@@ -6,12 +6,15 @@ from app.core.config import settings
 
 def get_vector_store():
     """
-    Returns the ChromaDB vector store instance with local persistence.
+    Yerel kalıcılık (persistence) ile ChromaDB vektör deposu örneğini döndürür.
+    Bu fonksiyon, belgelerin vektör temsillerini saklamak ve sorgulamak için kullanılır.
     """
-    # Initialize the embedding function using a local model
+    # Yerel bir model kullanarak gömme (embedding) fonksiyonunu başlat
     embedding_function = HuggingFaceEmbeddings(model_name=settings.EMBEDDING_MODEL_NAME)
     
-    # Initialize Chroma
+    # Chroma veritabanını başlat
+    # persist_directory: Verilerin diskte saklanacağı klasör
+    # collection_name: Veritabanındaki koleksiyon adı
     vector_store = Chroma(
         persist_directory=settings.CHROMA_DB_DIR,
         embedding_function=embedding_function,
@@ -19,3 +22,4 @@ def get_vector_store():
     )
     
     return vector_store
+
