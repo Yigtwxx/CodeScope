@@ -11,6 +11,7 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
+// Uygulama genelindeki hataları yakalayan bileşen
 export class ErrorBoundary extends React.Component<
   ErrorBoundaryProps,
   ErrorBoundaryState
@@ -20,16 +21,19 @@ export class ErrorBoundary extends React.Component<
     this.state = { hasError: false, error: null };
   }
 
+  // Hata durumunda state'i güncelle
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
+  // Hatayı logla
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error("ErrorBoundary caught an error:", error, errorInfo);
   }
 
   render() {
     if (this.state.hasError) {
+      // Hata durumunda gösterilecek yedek UI
       return (
         <div className="flex items-center justify-center h-screen bg-[#0f1117] text-white p-8">
           <div className="max-w-2xl text-center space-y-6">
@@ -60,3 +64,4 @@ export class ErrorBoundary extends React.Component<
     return this.props.children;
   }
 }
+

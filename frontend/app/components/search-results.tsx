@@ -4,6 +4,7 @@ import { Search, FileText, Hash } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
+// Arama sonucu veri yapısı
 interface SearchResult {
     file: string
     line_number: number
@@ -21,6 +22,7 @@ interface SearchResultsProps {
 }
 
 export function SearchResults({ results, total, query, searchType, onFileClick }: SearchResultsProps) {
+    // Sonuç yok ise boş durum göster
     if (results.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center h-full text-white/40 space-y-4 p-8">
@@ -29,7 +31,7 @@ export function SearchResults({ results, total, query, searchType, onFileClick }
                     <p className="text-lg font-medium text-white/60">No results found</p>
                     {query && (
                         <p className="text-sm font-mono text-white/40 bg-white/5 px-3 py-1 rounded">
-                            "{query}"
+                            &quot;{query}&quot;
                         </p>
                     )}
                     <div className="text-sm text-white/50 space-y-1 mt-4">
@@ -55,7 +57,7 @@ export function SearchResults({ results, total, query, searchType, onFileClick }
 
     return (
         <div className="flex flex-col h-full">
-            {/* Results Header */}
+            {/* Sonuçlar Başlığı */}
             <div className="px-4 py-3 border-b border-white/10 bg-[#0a0a0a]">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -70,11 +72,11 @@ export function SearchResults({ results, total, query, searchType, onFileClick }
                     </div>
                 </div>
                 <div className="mt-1 text-xs text-white/40 font-mono truncate">
-                    Query: "{query}"
+                    Query: &quot;{query}&quot;
                 </div>
             </div>
 
-            {/* Results List */}
+            {/* Sonuç Listesi */}
             <ScrollArea className="flex-1">
                 <div className="p-4 space-y-3">
                     {results.map((result, index) => (
@@ -84,7 +86,7 @@ export function SearchResults({ results, total, query, searchType, onFileClick }
                             onClick={() => onFileClick?.(result.file, result.line_number)}
                         >
                             <div className="p-4">
-                                {/* File Path & Line Number */}
+                                {/* Dosya Yolu ve Satır Numarası */}
                                 <div className="flex items-center justify-between mb-3">
                                     <div className="flex items-center gap-2 min-w-0 flex-1">
                                         <FileText className="h-4 w-4 text-blue-400 flex-shrink-0" />
@@ -97,7 +99,7 @@ export function SearchResults({ results, total, query, searchType, onFileClick }
                                     </div>
                                 </div>
 
-                                {/* Code Context */}
+                                {/* Kod Bağlamı (öncesi, o satır, sonrası) */}
                                 <div className="space-y-1 font-mono text-xs">
                                     {/* Context Before */}
                                     {result.context_before.map((line, i) => (
@@ -126,3 +128,5 @@ export function SearchResults({ results, total, query, searchType, onFileClick }
         </div>
     )
 }
+
+

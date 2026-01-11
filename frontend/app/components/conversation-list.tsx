@@ -25,13 +25,14 @@ export function ConversationList({
 }: ConversationListProps) {
     const [searchQuery, setSearchQuery] = useState('')
 
+    // Konuşmaları arama sorgusuna göre filtrele veya tarihe göre sırala
     const filteredConversations = searchQuery
         ? searchConversations(searchQuery)
         : conversations.sort((a, b) => b.updatedAt - a.updatedAt)
 
     return (
         <div className="flex flex-col h-full">
-            {/* Search */}
+            {/* Arama Alanı */}
             <div className="p-3 border-b border-white/10 flex-shrink-0">
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
@@ -45,7 +46,7 @@ export function ConversationList({
                 </div>
             </div>
 
-            {/* Conversation List */}
+            {/* Konuşma Listesi */}
             <div className="flex-1 overflow-y-auto p-3 space-y-2">
                 {filteredConversations.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-white/40">
@@ -68,7 +69,7 @@ export function ConversationList({
                 )}
             </div>
 
-            {/* New Chat Button */}
+            {/* Yeni Sohbet Butonu */}
             <div className="p-3 border-t border-white/10 flex-shrink-0">
                 <button
                     onClick={onNewChat}
@@ -81,3 +82,4 @@ export function ConversationList({
         </div>
     )
 }
+

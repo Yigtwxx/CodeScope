@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.services.hybrid_search import hybrid_search
 
 def get_llm():
+    """Ollama LLM örneğini döndürür."""
     return Ollama(
         base_url=settings.OLLAMA_BASE_URL,
         model=settings.OLLAMA_MODEL
@@ -13,12 +14,13 @@ def get_llm():
 
 async def chat_stream(query: str) -> AsyncIterable[str]:
     """
-    Generates a streaming response for the given query using RAG.
+    RAG (Retrieval-Augmented Generation) kullanarak sorgu için canlı (streaming) bir cevap üretir.
     """
     vector_store = get_vector_store()
     llm = get_llm()
 
-    # Prompt template for RAG responses
+    # RAG cevapları için şablon (Prompt Template)
+    # Modelin aynı dilde cevap vermesini zorlayan kurallar içerir
     template = """You are CodeScope, an intelligent bilingual coding assistant.
 
 Use the following codebase context to answer the user's question.
@@ -55,14 +57,39 @@ Your detailed answer (in the SAME language as question, NO language mixing):
         input_variables=["context", "question"]
     )
 
-    # Retrieve relevant documents (top 8) using hybrid search
+    # Öncelikle ChromaDB'de herhangi bir belge olup olmadığını kontrol et
     try:
-        # Try hybrid search first (semantic + BM25)
+        all_docs = vector_store.get()
+        total_docs = len(all_docs.get('ids', []))
+        
+        if total_docs == 0:
+            print("⚠️  WARNING: ChromaDB is empty! No repository loaded.")
+            print("─"*60 + "\n")
+            yield "⚠️ **Henüz bir repository açılmadı!**\n\n"
+            yield "📍 **Lütfen şu adımları takip edin:**\n\n"
+            yield "1. Sağ üstteki **⚙️ Settings** butonuna tıklayın\n"
+            yield "2. **'Open Repository'** butonuna tıklayın\n"
+            yield "3. Analiz etmek istediğiniz kod klasörünü seçin\n"
+            yield "4. Backend terminal'de **'🎉 INGESTION COMPLETE!'** mesajını bekleyin\n"
+            yield "5. Tamamlandıktan sonra sorularınızı sorun! 🚀\n"
+            return
+        
+        print(f"✓ ChromaDB ready: {total_docs} chunks available")
+    except Exception as e:
+        print(f"❌ ERROR checking ChromaDB: {e}")
+        print("─"*60 + "\n")
+        yield "❌ **Veritabanı Hatası!**\n\n"
+        yield "Lütfen Settings'den repository açmayı deneyin.\n"
+        return
+
+    # İlgili belgeleri (ilk 8 parça) hibrit arama ile getir
+    try:
+        # Önce hibrit aramayı dene (anlamsal + BM25)
         try:
             docs = hybrid_search(query, vector_store, k=8)
             print(f"📊 Hybrid Search Retrieved: {len(docs)} chunks")
         except Exception as hybrid_err:
-            # Fallback to semantic-only if hybrid fails
+            # Hibrit başarısız olursa sadece anlamsal aramaya dön
             print(f"⚠️  Hybrid search failed, using semantic-only: {hybrid_err}")
             docs = vector_store.similarity_search(query, k=8)
             print(f"📊 Semantic Search Retrieved: {len(docs)} chunks")
@@ -70,17 +97,15 @@ Your detailed answer (in the SAME language as question, NO language mixing):
         if len(docs) == 0:
             print("⚠️  WARNING: No relevant chunks found!")
             print("─"*60 + "\n")
-            yield "⚠️ **ChromaDB boş! Lütfen Settings'den repo'yu açın (Open Repository).**\n\n"
-            yield "Repository açtıktan sonra:\n"
-            yield "1. Backend terminal'de '🎉 INGESTION COMPLETE!' mesajını bekleyin\n"
-            yield "2. Daha sonra sorularınızı sorun\n"
+            yield "⚠️ **Bu sorguyla ilgili sonuç bulunamadı!**\n\n"
+            yield "Farklı bir soru sormayı deneyin veya repository'nizin doğru yüklendiğinden emin olun.\n"
             return
             
         print(f"📚 Using {len(docs)} code chunks as context")
         print("─"*60 + "\n")
         
-        # Show sources BEFORE generating answer (like ChatGPT/Gemini)
-        yield "\n **Araştırılan Dosyalar:**\n\n"
+        # Cevabı üretmeden önce kullanılan kaynak dosyaları göster
+        yield "\n📚 **Araştırılan Dosyalar:**\n\n"
         
         unique_sources = {}
         for doc in docs:
@@ -107,13 +132,13 @@ Your detailed answer (in the SAME language as question, NO language mixing):
         yield f"❌ **Arama Hatası:** {str(e)}\n\nLütfen Settings'den repo'yu tekrar açın."
         return
     
-    # Prepare context from retrieved documents
+    # Getirilen belgelerden içeriği hazırla
     context = "\n\n".join([doc.page_content for doc in docs])
     
-    # Create the RAG chain
+    # RAG zincirini (chain) oluştur
     chain = prompt | llm
     
-    # Stream the response
+    # Cevabı stream (parça parça) olarak döndür
     try:
         for chunk in chain.stream({"context": context, "question": query}):
             yield chunk
@@ -128,4 +153,5 @@ Your detailed answer (in the SAME language as question, NO language mixing):
             yield "4. Restart CodeScope."
         else:
             yield f"🔴 **An error occurred:** {error_msg}"
+
 

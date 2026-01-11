@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { ChevronRight, ChevronDown, File, Folder } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { useState, useEffect, useMemo } from "react"
+import { ChevronRight, ChevronDown, File } from "lucide-react"
 
+// Dosya ağacı düğüm yapısı
 interface FileNode {
     name: string
     type: "file" | "directory"
@@ -16,12 +16,14 @@ interface FileTreeProps {
     onSelectFile: (path: string) => void
 }
 
+// Rekürsif dosya ağacı düğüm bileşeni
 const FileTreeNode = ({ node, level, onSelect }: { node: FileNode, level: number, onSelect: (path: string) => void }) => {
     const [isExpanded, setIsExpanded] = useState(false)
     const [children, setChildren] = useState<FileNode[]>([])
     const [isLoading, setIsLoading] = useState(false)
     const [hasLoaded, setHasLoaded] = useState(false)
 
+    // Kök dizin (level 0) ise otomatik olarak yükle
     useEffect(() => {
         if (level === 0 && !hasLoaded) {
             setIsLoading(true)
@@ -52,6 +54,7 @@ const FileTreeNode = ({ node, level, onSelect }: { node: FileNode, level: number
             return
         }
 
+        // Klasör henüz yüklenmediyse içeriğini çek
         if (!isExpanded && !hasLoaded) {
             setIsLoading(true)
             try {
@@ -111,17 +114,14 @@ const FileTreeNode = ({ node, level, onSelect }: { node: FileNode, level: number
     )
 }
 
+// Ana dosya ağacı bileşeni
 export function FileTree({ rootPath, onSelectFile }: FileTreeProps) {
-    const [rootNode, setRootNode] = useState<FileNode | null>(null)
-
-    useEffect(() => {
-        if (rootPath) {
-            // Construct a pseudo-root node to kick off the tree
-            setRootNode({
-                name: rootPath.split(/[/\\]/).pop() || "Root",
-                type: "directory",
-                path: rootPath
-            })
+    const rootNode = useMemo(() => {
+        if (!rootPath) return null
+        return {
+            name: rootPath.split(/[/\\]/).pop() || "Root",
+            type: "directory" as const,
+            path: rootPath
         }
     }, [rootPath])
 
@@ -138,3 +138,4 @@ export function FileTree({ rootPath, onSelectFile }: FileTreeProps) {
         </div>
     )
 }
+

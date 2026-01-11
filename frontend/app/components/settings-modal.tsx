@@ -2,10 +2,6 @@
 
 import { useState } from "react"
 import { Loader2 } from "lucide-react"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 
 interface SettingsModalProps {
     open: boolean
@@ -26,6 +22,7 @@ export function SettingsModal({ open, onOpenChange, onIngestSuccess }: SettingsM
         setProgressMessages([])
 
         try {
+            // Dosya yolunu temizle (tırnak işaretlerini kaldır)
             const sanitizedPath = repoPath.trim().replace(/^['"]+|['"]+$/g, '')
             console.log("Ingesting path:", sanitizedPath)
 
@@ -40,7 +37,7 @@ export function SettingsModal({ open, onOpenChange, onIngestSuccess }: SettingsM
                 throw new Error(data.detail || `Ingestion failed with status ${response.status}`)
             }
 
-            // Read the stream
+            // Stream yanıtı oku (ilerleme güncellemeleri için)
             const reader = response.body?.getReader()
             const decoder = new TextDecoder()
 
@@ -55,9 +52,9 @@ export function SettingsModal({ open, onOpenChange, onIngestSuccess }: SettingsM
                 const text = decoder.decode(value)
                 setProgressMessages(prev => [...prev, text])
 
-                // Check if ingestion completed
+                // İçe aktarmanın tamamlanıp tamamlanmadığını kontrol et
                 if (text.includes("🎉 INGESTION COMPLETE!")) {
-                    // Show browser notification if supported
+                    // Tarayıcı bildirimi göster (destekleniyorsa)
                     if ("Notification" in window && Notification.permission === "granted") {
                         new Notification("CodeScope", {
                             body: "✅ Repository ingestion completed! Ready to answer questions.",
@@ -68,7 +65,7 @@ export function SettingsModal({ open, onOpenChange, onIngestSuccess }: SettingsM
             }
 
             onIngestSuccess(sanitizedPath)
-            setTimeout(() => onOpenChange(false), 1500) // Close after showing completion
+            setTimeout(() => onOpenChange(false), 1500) // Tamamlanmayı gösterdikten sonra kapat
         } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
             console.error("Ingestion error:", err)
             if (err.message.includes("Failed to fetch")) {
@@ -85,22 +82,22 @@ export function SettingsModal({ open, onOpenChange, onIngestSuccess }: SettingsM
         <>
             {open && (
                 <>
-                    {/* Backdrop */}
+                    {/* Arka Plan Örtüsü (Backdrop) */}
                     <div
                         className="fixed inset-0 bg-black/80 backdrop-blur-sm z-40"
                         onClick={() => onOpenChange(false)}
                     />
 
-                    {/* Modal */}
+                    {/* Modal Penceresi */}
                     <div className="fixed inset-0 flex items-center justify-center z-50 p-4 pointer-events-none">
                         <div className="bg-[#1a1b26] border border-white/20 rounded-xl shadow-2xl w-full max-w-md pointer-events-auto max-h-[90vh] flex flex-col">
-                            {/* Header */}
+                            {/* Başlık (Header) */}
                             <div className="p-6 border-b border-white/10 flex-shrink-0">
                                 <h2 className="text-xl font-semibold text-white">Repository Settings</h2>
                                 <p className="text-sm text-white/50 mt-1">Open a local repository to analyze</p>
                             </div>
 
-                            {/* Content - Scrollable */}
+                            {/* İçerik - Kaydırılabilir */}
                             <div className="p-6 flex-1 overflow-y-auto">
                                 <form onSubmit={handleIngest} className="space-y-4">
                                     <div>
@@ -137,7 +134,7 @@ export function SettingsModal({ open, onOpenChange, onIngestSuccess }: SettingsM
                                 </form>
                             </div>
 
-                            {/* Footer - Fixed */}
+                            {/* Alt Bilgi (Footer) - Sabit */}
                             <div className="p-6 border-t border-white/10 flex gap-3 flex-shrink-0">
                                 <button
                                     type="button"
@@ -168,3 +165,5 @@ export function SettingsModal({ open, onOpenChange, onIngestSuccess }: SettingsM
         </>
     )
 }
+
+

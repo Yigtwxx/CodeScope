@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react"
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { Settings, Send, Loader2, Sparkles, Code as CodeIcon, Zap, MessageSquare, Plus, X, Search as SearchIcon, Trash2 } from "lucide-react"
+import { Settings, Send, Sparkles, Code as CodeIcon, Zap, MessageSquare, X, Search as SearchIcon, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -13,12 +13,23 @@ import { FileTree } from "./components/file-tree"
 import { SearchResults } from "./components/search-results"
 import { ExportMenu } from "./components/export-menu"
 
+// Mesaj veri yapısı
 interface Message {
   role: 'user' | 'assistant'
   content: string
-  timestamp?: number  // Optional for backward compatibility
+  timestamp?: number
 }
 
+// Arama sonucu veri yapısı (search-results.tsx ile uyumlu olmalı)
+interface SearchResult {
+  file: string
+  line_number: number
+  line_content: string
+  context_before: string[]
+  context_after: string[]
+}
+
+// Dosya uzantısına göre sözdizimi vurgulama dili döndürür
 const getLanguageFromPath = (path: string): string => {
   const extension = path.split('.').pop()?.toLowerCase()
   switch (extension) {
@@ -36,6 +47,7 @@ const getLanguageFromPath = (path: string): string => {
 }
 
 export default function Home() {
+  // Mesaj durumu ve başlangıç mesajı
   const [messages, setMessages] = useState<Message[]>([
     { role: 'assistant', content: 'Hello! I am CodeScope. Set a repository in settings and ask me anything about your code.', timestamp: Date.now() }
   ])
@@ -43,23 +55,23 @@ export default function Home() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
 
-  // State for IDE features
+  // IDE özelliklerini yöneten durumlar (state)
   const [repoPath, setRepoPath] = useState<string>("")
   const [activeTab, setActiveTab] = useState("chat")
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [fileContent, setFileContent] = useState<string>("")
   const [isLoadingFile, setIsLoadingFile] = useState(false)
 
-  // Search mode state
+  // Arama modu durumu
   const [searchMode, setSearchMode] = useState<'rag' | 'regex' | 'fuzzy'>('rag')
-  const [searchResults, setSearchResults] = useState<any[]>([])
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [searchQuery, setSearchQuery] = useState<string>("")
   const [totalMatches, setTotalMatches] = useState<number>(0)
   const [isSearching, setIsSearching] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Load messages from localStorage on mount
+  // Sayfa yüklendiğinde localStorage'dan mesajları yükle
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('codescope_messages')
@@ -73,31 +85,32 @@ export default function Home() {
     }
   }, [])
 
-  // Auto-save messages to localStorage
+  // Mesajları localStorage'a otomatik kaydet
   useEffect(() => {
     if (typeof window !== 'undefined' && messages.length > 0) {
       localStorage.setItem('codescope_messages', JSON.stringify(messages))
     }
   }, [messages])
 
-  // Auto-scroll to bottom
+  // Yeni mesaj geldiğinde otomatik aşağı kaydır
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
+  // Mesaj gönderme işlemi
   const handleSend = async () => {
     if (!input.trim() || isGenerating || isSearching) return
 
     const userMessage = input.trim()
     setInput("")
 
-    // Handle different search modes
+    // Farklı arama modlarını yönet
     if (searchMode === 'regex' || searchMode === 'fuzzy') {
       handleSearch(userMessage)
       return
     }
 
-    // RAG mode (default chat)
+    // RAG modu (standart sohbet)
     setMessages(prev => [...prev, { role: 'user', content: userMessage }])
     setIsGenerating(true)
 
@@ -119,6 +132,7 @@ export default function Home() {
 
       let accumulatedContent = ""
 
+      // Stream yanıtını parça parça oku
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
@@ -143,6 +157,7 @@ export default function Home() {
     }
   }
 
+  // Arama işlemini yürüten fonksiyon (Regex veya Fuzzy)
   const handleSearch = async (query: string) => {
     if (!repoPath) {
       alert("Please set a repository path first in Settings")
@@ -169,7 +184,7 @@ export default function Home() {
         body: JSON.stringify({
           query,
           repo_path: repoPath,
-          threshold: 70 // For fuzzy search
+          threshold: 70 // Fuzzy arama için eşik değeri
         }),
       })
 
@@ -185,7 +200,7 @@ export default function Home() {
 
       setSearchResults(data.results || [])
       setTotalMatches(data.total_matches || 0)
-    } catch (error: any) {
+    } catch (error: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       console.error('[Search] Error:', error)
       alert(`Search failed: ${error.message} `)
       setSearchResults([])
@@ -195,15 +210,16 @@ export default function Home() {
     }
   }
 
+  // Depo yükleme (ingestion) başarılı olduğunda çalışır
   const handleIngestSuccess = (path: string) => {
     setRepoPath(path)
 
-    // Request notification permission if not already granted
+    // Bildirim izni iste
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission()
     }
 
-    // Show success message in chat
+    // Sohbette başarı mesajı göster
     const successMsg: Message = {
       role: 'assistant',
       content: `✅ **Repository açıldı!** Indexing arka planda devam ediyor.\n\n📍 **Repo:** ${path}\n\n⏳ **Ne yapmalısınız:**\n1. Settings modal'deki progress mesajlarını takip edin\n2. "🎉 INGESTION COMPLETE!" mesajını görene kadar bekleyin\n3. Tamamlandığında bildirim alacaksınız!\n4. Sonra sorularınızı sorun 🚀`,
@@ -212,6 +228,7 @@ export default function Home() {
     setMessages(prev => [...prev, successMsg])
   }
 
+  // Dosya ağacından bir dosya seçildiğinde çalışır
   const handleFileSelect = async (path: string) => {
     setSelectedFile(path)
     setIsLoadingFile(true)
@@ -230,7 +247,7 @@ export default function Home() {
         const err = await response.json()
         setFileContent(`Error loading file content: ${err.detail || response.statusText} `)
       }
-    } catch (e: any) {
+    } catch (e: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       setFileContent(`Error loading file content: ${e.message} `)
     } finally {
       setIsLoadingFile(false)
@@ -239,43 +256,58 @@ export default function Home() {
 
   return (
     <main className="fixed inset-0 overflow-hidden bg-black">
-      {/* Main App Container - Full Screen */}
+      {/* Ana Uygulama Konteyneri - Tam Ekran */}
       <div className="absolute inset-0 flex flex-col overflow-hidden bg-[#0a0a0a]">
 
-        {/* Top Title Bar with Mac Controls */}
+        {/* Üst Başlık Çubuğu (Mac benzeri kontrollerle) */}
         <header className="flex items-center justify-between px-6 py-3 border-b border-white/10 bg-[#0a0a0a] relative">
-          {/* Mac Window Controls */}
+          {/* Mac Pencere Kontrolleri (Görsel) */}
           <div className="flex items-center gap-2 absolute left-4">
             <div className="w-3 h-3 rounded-full bg-[#ff5f56]"></div>
             <div className="w-3 h-3 rounded-full bg-[#ffbd2e]"></div>
             <div className="w-3 h-3 rounded-full bg-[#27c93f]"></div>
           </div>
 
-          {/* Centered Title */}
+          {/* Ortalanmış Başlık */}
           <h1 className="text-xl font-bold tracking-tight absolute left-1/2 transform -translate-x-1/2">CodeScope</h1>
 
-          {/* Settings Button */}
+          {/* Ayarlar Butonu */}
           <Button variant="ghost" size="icon" onClick={() => setIsSettingsOpen(true)} className="ml-auto">
             <Settings className="h-5 w-5" />
           </Button>
         </header>
 
-        {/* Main Content Area - Explorer + Content */}
+        {/* Ana İçerik Alanı - Dosya Gezgini + Sekmeli İçerik */}
         <div className="flex-1 flex flex-row overflow-hidden">
-          {/* Sidebar - File Explorer */}
-          <aside className={`w - 60 bg - [#0a0a0a] border - r border - white / 10 flex flex - col transition - all duration - 300 ${!repoPath ? 'opacity-50 pointer-events-none' : ''} `}>
+          {/* Yan Çubuk - Dosya Gezgini */}
+          <aside className={`w-60 bg-[#0a0a0a] border-r border-white/10 flex flex-col transition-all duration-300 ${!repoPath ? 'opacity-50 pointer-events-none' : ''}`}>
             <FileTree rootPath={repoPath} onSelectFile={handleFileSelect} />
           </aside>
 
-          {/* Main Content Column */}
+          {/* Ana İçerik Sütunu */}
           <div className="flex-1 flex flex-col h-full min-w-0 bg-[#0a0a0a]">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-              {/* Header with Export and Settings */}
+              {/* Sekme Başlıkları ve Dışa Aktar/Temizle Butonları */}
               <div className="px-4 pt-4 flex items-center justify-between">
-                <TabsList className="grid w-[300px] grid-cols-3">
-                  <TabsTrigger value="chat"><MessageSquare className="w-4 h-4 mr-2" /> Chat</TabsTrigger>
-                  <TabsTrigger value="search"><SearchIcon className="w-4 h-4 mr-2" /> Search</TabsTrigger>
-                  <TabsTrigger value="code"><CodeIcon className="w-4 h-4 mr-2" /> Code</TabsTrigger>
+                <TabsList className="grid w-[300px] grid-cols-3 bg-white/5">
+                  <TabsTrigger
+                    value="chat"
+                    className="cursor-pointer data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-300 data-[state=active]:border-purple-500/50 hover:bg-purple-500/10 hover:text-purple-200 transition-all"
+                  >
+                    <MessageSquare className="w-4 h-4 mr-2" /> Chat
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="search"
+                    className="cursor-pointer data-[state=active]:bg-blue-500/20 data-[state=active]:text-blue-300 data-[state=active]:border-blue-500/50 hover:bg-blue-500/10 hover:text-blue-200 transition-all"
+                  >
+                    <SearchIcon className="w-4 h-4 mr-2" /> Search
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="code"
+                    className="cursor-pointer data-[state=active]:bg-green-500/20 data-[state=active]:text-green-300 data-[state=active]:border-green-500/50 hover:bg-green-500/10 hover:text-green-200 transition-all"
+                  >
+                    <CodeIcon className="w-4 h-4 mr-2" /> Code
+                  </TabsTrigger>
                 </TabsList>
 
                 <div className="flex items-center gap-2">
@@ -293,10 +325,10 @@ export default function Home() {
                         setMessages([{ role: 'assistant', content: 'Hello! I am CodeScope. Set a repository in settings and ask me anything about your code.', timestamp: Date.now() }])
                       }
                     }}
-                    className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+                    className="p-2 rounded-lg hover:bg-red-500/20 transition-all cursor-pointer group"
                     title="Clear Chat"
                   >
-                    <Trash2 className="h-5 w-5 text-white/70 hover:text-red-400" />
+                    <Trash2 className="h-5 w-5 text-white/70 group-hover:text-red-400 transition-colors" />
                   </button>
                 </div>
               </div>
@@ -311,14 +343,14 @@ export default function Home() {
                   </div>
 
                   <div className="p-4 border-t border-white/10 space-y-3">
-                    {/* Search Mode Selector */}
+                    {/* Arama Modu Seçici */}
                     <div className="flex items-center gap-2 mb-3">
                       <span className="text-xs text-white/40 mr-2">Mode:</span>
                       <div className="flex gap-2">
                         <button
                           type="button"
                           onClick={() => setSearchMode('rag')}
-                          className={`px-4 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2 ${searchMode === 'rag'
+                          className={`px-4 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2 cursor-pointer ${searchMode === 'rag'
                             ? 'bg-gradient-to-r from-purple-500/20 to-pink-500/20 text-purple-300 border border-purple-500/30 shadow-lg shadow-purple-500/10'
                             : 'bg-white/5 text-white/50 border border-white/10 hover:bg-white/10 hover:text-white/70 hover:border-white/20'
                             }`}
@@ -330,7 +362,7 @@ export default function Home() {
                         <button
                           type="button"
                           onClick={() => setSearchMode('regex')}
-                          className={`px-4 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2 ${searchMode === 'regex'
+                          className={`px-4 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2 cursor-pointer ${searchMode === 'regex'
                             ? 'bg-gradient-to-r from-blue-500/20 to-cyan-500/20 text-blue-300 border border-blue-500/30 shadow-lg shadow-blue-500/10'
                             : 'bg-white/5 text-white/50 border border-white/10 hover:bg-white/10 hover:text-white/70 hover:border-white/20'
                             }`}
@@ -342,7 +374,7 @@ export default function Home() {
                         <button
                           type="button"
                           onClick={() => setSearchMode('fuzzy')}
-                          className={`px-4 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2 ${searchMode === 'fuzzy'
+                          className={`px-4 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2 cursor-pointer ${searchMode === 'fuzzy'
                             ? 'bg-gradient-to-r from-orange-500/20 to-amber-500/20 text-orange-300 border border-orange-500/30 shadow-lg shadow-orange-500/10'
                             : 'bg-white/5 text-white/50 border border-white/10 hover:bg-white/10 hover:text-white/70 hover:border-white/20'
                             }`}
@@ -353,7 +385,7 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {/* Input Form */}
+                    {/* Mesaj/Sorgu Giriş Alanı */}
                     <form
                       onSubmit={(e) => {
                         e.preventDefault()
@@ -453,3 +485,5 @@ export default function Home() {
     </main >
   )
 }
+
+

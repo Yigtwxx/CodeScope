@@ -2,11 +2,40 @@
 
 import { useEffect, useState } from "react"
 
+// Yılan animasyonu verisi
+interface SnakeData {
+    d: string         // Path yolu
+    width: number     // Yol kalınlığı
+    duration: number  // Animasyon süresi
+    delay: number     // Animasyon gecikmesi
+}
+
 export function CircuitBoard() {
     const [mounted, setMounted] = useState(false)
+    const [hSnakes, setHSnakes] = useState<SnakeData[]>([])
+    const [vSnakes, setVSnakes] = useState<SnakeData[]>([])
 
+    // Rastgele değerleri sadece istemci tarafında ve bir kez oluştur
     useEffect(() => {
         setMounted(true)
+
+        // Yatay yılanlar için veri oluştur
+        const hData = Array.from({ length: 20 }).map((_, i) => ({
+            d: `M -200 ${i * 100 + Math.random() * 50} H 3000`,
+            width: 2,
+            duration: 2 + Math.random() * 4,
+            delay: Math.random() * 3
+        }))
+        setHSnakes(hData)
+
+        // Dikey yılanlar için veri oluştur
+        const vData = Array.from({ length: 30 }).map((_, i) => ({
+            d: `M ${i * 120 + Math.random() * 50} -200 V 2000`,
+            width: 2,
+            duration: 3 + Math.random() * 4,
+            delay: Math.random() * 3
+        }))
+        setVSnakes(vData)
     }, [])
 
     if (!mounted) return null
@@ -58,33 +87,33 @@ export function CircuitBoard() {
 
                 <g className="circuit-snakes">
                     {/* Horizontal Snakes - Random positions */}
-                    {[...Array(20)].map((_, i) => (
+                    {hSnakes.map((snake, i) => (
                         <path
                             key={`h-${i}`}
-                            d={`M -200 ${i * 100 + Math.random() * 50} H 3000`}
+                            d={snake.d}
                             fill="none"
                             stroke="url(#snake-gradient-h)"
-                            strokeWidth="2"
+                            strokeWidth={snake.width}
                             className="animate-circuit-flow-h opacity-0"
                             style={{
-                                animationDuration: `${2 + Math.random() * 4}s`,
-                                animationDelay: `${Math.random() * 3}s`
+                                animationDuration: `${snake.duration}s`,
+                                animationDelay: `${snake.delay}s`
                             }}
                         />
                     ))}
 
                     {/* Vertical Snakes - Random positions */}
-                    {[...Array(30)].map((_, i) => (
+                    {vSnakes.map((snake, i) => (
                         <path
                             key={`v-${i}`}
-                            d={`M ${i * 120 + Math.random() * 50} -200 V 2000`}
+                            d={snake.d}
                             fill="none"
                             stroke="url(#snake-gradient-v)"
-                            strokeWidth="2"
+                            strokeWidth={snake.width}
                             className="animate-circuit-flow-v opacity-0"
                             style={{
-                                animationDuration: `${3 + Math.random() * 4}s`,
-                                animationDelay: `${Math.random() * 3}s`
+                                animationDuration: `${snake.duration}s`,
+                                animationDelay: `${snake.delay}s`
                             }}
                         />
                     ))}
@@ -108,7 +137,7 @@ export function CircuitBoard() {
             animation-timing-function: linear;
             animation-iteration-count: infinite;
             opacity: 0.8;
-           filter: drop-shadow(0 0 2px #3b82f6);
+            filter: drop-shadow(0 0 2px #3b82f6);
         }
 
         @keyframes flow-h {
@@ -121,3 +150,4 @@ export function CircuitBoard() {
         </div>
     )
 }
+

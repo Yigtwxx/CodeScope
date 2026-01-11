@@ -5,11 +5,13 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { cn } from '@/lib/utils'
 import { FileText, ChevronDown, ChevronUp } from 'lucide-react'
 
+// Sohbet mesajının özellikleri (props)
 interface ChatMessageProps {
     role: 'user' | 'assistant'
     content: string
 }
 
+// Kaynak alıntısı veri yapısı
 interface SourceCitation {
     id: string
     filename: string
@@ -18,7 +20,7 @@ interface SourceCitation {
 }
 
 function parseSourceCitations(content: string): { sources: SourceCitation[], mainContent: string } {
-    // Parse sources from RAG response
+    // RAG cevabından kaynakları ayıkla
     const sourcePattern = /\*\*📚 Kullanılan Kaynaklar:\*\*\n\n([\s\S]*?)\n---\n/
     const match = content.match(sourcePattern)
 
@@ -26,7 +28,7 @@ function parseSourceCitations(content: string): { sources: SourceCitation[], mai
         const sourcesText = match[1]
         const mainContent = content.replace(match[0], '')
 
-        // Parse individual sources: **[1]** `filename.py` *(python)* - path/to/file.py
+        // Her bir kaynağı ayrıştır: **[1]** `filename.py` *(python)* - path/to/file.py
         const sources: SourceCitation[] = []
         const sourceLines = sourcesText.split('\n').filter(line => line.trim())
 
@@ -49,9 +51,9 @@ function parseSourceCitations(content: string): { sources: SourceCitation[], mai
 }
 
 export function ChatMessage({ role, content }: ChatMessageProps) {
-    const [sourcesExpanded, setSourcesExpanded] = useState(false) // Collapsed by default
+    const [sourcesExpanded, setSourcesExpanded] = useState(false) // Varsayılan olarak kapalı
 
-    // Parse sources from assistant messages
+    // Asistan mesajlarından kaynakları ayıkla
     const { sources, mainContent } = role === 'assistant'
         ? parseSourceCitations(content)
         : { sources: [], mainContent: content }
@@ -71,10 +73,10 @@ export function ChatMessage({ role, content }: ChatMessageProps) {
                         : "bg-zinc-700 text-white"
                 )}
             >
-                {/* Source Citations (Cleaner, ChatGPT-style) */}
+                {/* Kaynak Alıntıları (Temiz, ChatGPT tarzı görünüm) */}
                 {sources.length > 0 && (
                     <div className="mb-4 border border-emerald-500/20 rounded-lg overflow-hidden bg-emerald-500/5">
-                        {/* Header - Collapsed by default */}
+                        {/* Başlık - Tıklanınca açılır/kapanır */}
                         <button
                             onClick={() => setSourcesExpanded(!sourcesExpanded)}
                             className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-emerald-500/10 transition-colors group"
@@ -90,11 +92,11 @@ export function ChatMessage({ role, content }: ChatMessageProps) {
                             )}
                         </button>
 
-                        {/* Source List - Cleaner design */}
+                        {/* Kaynak Listesi - Temiz tasarım */}
                         {sourcesExpanded && (
                             <div className="px-3 pb-3 pt-1 space-y-2">
                                 {sources.map((source) => {
-                                    // Language-specific colors
+                                    // Dile özel renkler
                                     const langColors: Record<string, string> = {
                                         'python': 'bg-blue-500/20 text-blue-300 border-blue-500/30',
                                         'javascript': 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30',
@@ -137,7 +139,7 @@ export function ChatMessage({ role, content }: ChatMessageProps) {
                     </div>
                 )}
 
-                {/* Main Message Content */}
+                {/* Ana Mesaj İçeriği */}
                 {role === 'assistant' ? (
                     <ReactMarkdown
                         components={{
@@ -170,3 +172,4 @@ export function ChatMessage({ role, content }: ChatMessageProps) {
         </div>
     )
 }
+
