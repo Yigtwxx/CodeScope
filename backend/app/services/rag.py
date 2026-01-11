@@ -3,6 +3,7 @@ from langchain_community.llms import Ollama
 from langchain_core.prompts import PromptTemplate
 from app.db.chroma import get_vector_store
 from app.core.config import settings
+from app.services.hybrid_search import hybrid_search
 
 def get_llm():
     return Ollama(
@@ -54,10 +55,17 @@ Your detailed answer (in the SAME language as question, NO language mixing):
         input_variables=["context", "question"]
     )
 
-    # Retrieve relevant documents (top 8)
+    # Retrieve relevant documents (top 8) using hybrid search
     try:
-        docs = vector_store.similarity_search(query, k=8)
-        print(f"📊 Retrieved: {len(docs)} chunks")
+        # Try hybrid search first (semantic + BM25)
+        try:
+            docs = hybrid_search(query, vector_store, k=8)
+            print(f"📊 Hybrid Search Retrieved: {len(docs)} chunks")
+        except Exception as hybrid_err:
+            # Fallback to semantic-only if hybrid fails
+            print(f"⚠️  Hybrid search failed, using semantic-only: {hybrid_err}")
+            docs = vector_store.similarity_search(query, k=8)
+            print(f"📊 Semantic Search Retrieved: {len(docs)} chunks")
         
         if len(docs) == 0:
             print("⚠️  WARNING: No relevant chunks found!")
