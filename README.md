@@ -1,4 +1,4 @@
-# 🔭 CodeScope
+#  CodeScope
 
 > **Your Privacy-First, Fully Local AI Coding Assistant.**
 > Chat with your codebase using local LLMs (Ollama) and ChromaDB. No data ever leaves your machine.
