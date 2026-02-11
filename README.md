@@ -8,7 +8,6 @@
 ![Next.js](https://img.shields.io/badge/Next.js-14-black)
 ![Ollama](https://img.shields.io/badge/Ollama-Local%20LLM-orange)
 
-
 ---
 
 ## 📖 Project Vision
