@@ -10,6 +10,7 @@
 
 ---
 
+
 ## 📖 Project Vision
 
 In an era where proprietary codebases are the most valuable assets of a company, uploading code to cloud-based LLMs poses a significant security risk. **CodeScope** was born from a simple necessity: **High-quality code assistance without the privacy trade-off.**
