@@ -20,7 +20,7 @@ python-multipart==0.0.20
 requests==2.32.3
 aiofiles==25.1.0
 watchdog==6.0.0
-rapidfuzz==3.12.1
+rapidfuzz==3.14.3
 
 # Hybrid Search & Code Intelligence
 rank-bm25==0.2.2
