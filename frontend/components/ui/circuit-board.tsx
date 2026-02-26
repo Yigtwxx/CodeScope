@@ -17,9 +17,11 @@ export function CircuitBoard() {
 
     // Rastgele değerleri sadece istemci tarafında ve bir kez oluştur
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setMounted(true)
 
         // Yatay yılanlar için veri oluştur
+
         const hData = Array.from({ length: 20 }).map((_, i) => ({
             d: `M -200 ${i * 100 + Math.random() * 50} H 3000`,
             width: 2,
