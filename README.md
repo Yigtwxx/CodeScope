@@ -10,7 +10,7 @@
 
 ---
 
-## 📖 Project Vision
+##  Project Vision
 
 In an era where proprietary codebases are the most valuable assets of a company, uploading code to cloud-based LLMs poses a significant security risk. **CodeScope** was born from a simple necessity: **High-quality code assistance without the privacy trade-off.**
 
@@ -18,11 +18,11 @@ Unlike browser-based tools or plugins that send your snippets to remote servers,
 
 ---
 
-## 🏗️ Architecture & Technology Stack
+##  Architecture & Technology Stack
 
 We carefully selected every component of CodeScope to balance performance, developer experience, and the "local-first" philosophy. Here is a deep dive into our choices:
 
-### 🧠 The Backend Core (Python)
+###  The Backend Core (Python)
 
 #### **FastAPI** (The API Framework)
 **Why we chose it:** Speed and Concurrency.
