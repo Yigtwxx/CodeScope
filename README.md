@@ -50,7 +50,7 @@ Running raw model weights (GGUF, PyTorch) is difficult and hardware-dependent. O
 
 ---
 
-### 🎨 The Frontend Experience (TypeScript)
+###  The Frontend Experience (TypeScript)
 
 #### **Next.js 14** (The Framework)
 **Why we chose it:** The standard for React applications.
@@ -67,7 +67,7 @@ We are early adopters of React 19 to leverage the latest improvements in state m
 
 ---
 
-## ⚙️ How It Works (Under the Hood)
+##  How It Works (Under the Hood)
 
 ### 1. Ingestion Pipeline
 When you click **"Ingest Repository"**, a complex workflow triggers:
