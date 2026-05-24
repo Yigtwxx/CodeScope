@@ -87,7 +87,7 @@ When you ask **"How does login work?"**:
 
 ---
 
-## 🚀 Prerequisites
+##  Prerequisites
 
 Before you begin, ensure you have the following installed:
 
@@ -101,7 +101,7 @@ Before you begin, ensure you have the following installed:
 
 ---
 
-## 💿 Installation & Setup
+##  Installation & Setup
 
 ### Option A: Quick Start (Windows Only) ⚡
 
