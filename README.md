@@ -181,15 +181,15 @@ npm run dev
       - *Example (Mac/Linux)*: `/Users/name/projects/my-awesome-app`
     - Click **Ingest Repository**.
 4.  **Wait for Ingestion**: The system will:
-    - 🧹 Clear any previous index from the database.
-    - 📄 Scan compatible files (ignoring `.git`, `node_modules`, etc.).
-    - 🧩 Chunk code into manageable pieces (1000 chars w/ overlap).
-    - 💾 Store embeddings in local ChromaDB.
+    -  Clear any previous index from the database.
+    -  Scan compatible files (ignoring `.git`, `node_modules`, etc.).
+    -  Chunk code into manageable pieces (1000 chars w/ overlap).
+    -  Store embeddings in local ChromaDB.
 5.  **Start Chatting**: Close the modal and ask questions about your code!
 
 ---
 
-## 📂 Project Structure
+##  Project Structure
 
 ```
 CodeScope/
