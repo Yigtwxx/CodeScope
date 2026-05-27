@@ -103,7 +103,7 @@ Before you begin, ensure you have the following installed:
 
 ##  Installation & Setup
 
-### Option A: Quick Start (Windows Only) ⚡
+### Option A: Quick Start (Windows Only) 
 
 If you are on Windows, you can use the included batch script to start everything at once.
 
@@ -170,7 +170,7 @@ npm run dev
 
 ---
 
-## 🕹 Usage Guide
+##  Usage Guide
 
 1.  **Start the App**: Ensure Ollama, Backend, and Frontend are all running.
 2.  **Open URL**: Go to `http://localhost:3000` in your browser.
@@ -211,7 +211,7 @@ CodeScope/
 
 ---
 
-## 🤝 Contributing
+##  Contributing
 
 Contributions are welcome! If you'd like to improve CodeScope, feel free to fork the repository and submit a pull request.
 
