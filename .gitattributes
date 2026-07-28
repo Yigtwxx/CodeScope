@@ -1,0 +1,21 @@
+# Normalise line endings so Windows and Unix checkouts do not produce
+# whole-file diffs.
+* text=auto eol=lf
+
+# Scripts that must keep their platform's native endings.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.sh  text eol=lf
+
+# Binary assets.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+
+# Collapse lockfile noise in pull request diffs.
+package-lock.json linguist-generated=true -diff
