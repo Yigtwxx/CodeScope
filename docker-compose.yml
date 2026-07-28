@@ -1,0 +1,67 @@
+name: codescope
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama-models:/root/.ollama
+    ports:
+      # Exposed so `ollama pull` works from the host too. Drop this line to keep
+      # it reachable only from the other containers. Every host port here can be
+      # overridden from the environment when something else already owns it.
+      - '${OLLAMA_PORT:-11434}:11434'
+    healthcheck:
+      test: ['CMD-SHELL', 'ollama list >/dev/null 2>&1 || exit 1']
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+    # Uncomment to give Ollama an NVIDIA GPU. Requires the NVIDIA Container
+    # Toolkit on the host; without it, the model runs on CPU.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  backend:
+    build:
+      context: ./backend
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:9b}
+      # The container only ever sees the mount below, so the sandbox root is it.
+      WORKSPACE_ROOT: /workspace
+      CHROMA_DB_DIR: /data/chroma
+      ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+    volumes:
+      # Point WORKSPACE at the directory holding the repositories you want to
+      # index; it is mounted read-only. Inside the UI, index /workspace/<repo>.
+      - ${WORKSPACE:-./}:/workspace:ro
+      - chroma-data:/data/chroma
+    ports:
+      - '${BACKEND_PORT:-8000}:8000'
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Resolved in the browser, so it must be the host-visible URL — change
+        # it alongside BACKEND_PORT.
+        NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-8000}
+    depends_on:
+      - backend
+    ports:
+      - '${FRONTEND_PORT:-3000}:3000'
+    restart: unless-stopped
+
+volumes:
+  ollama-models:
+  chroma-data:
