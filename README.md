@@ -270,8 +270,8 @@ Changing `EMBEDDING_MODEL_NAME` makes the stored vectors meaningless, so
 CodeScope discards the index and logs that a re-index is needed.
 
 For generation, anything you have pulled works. `qwen3-coder:30b` explains code
-noticeably better if you have the memory; `qwen2.5-coder:7b` is a lighter
-alternative that still follows citations well.
+noticeably better if you have the memory; the default `qwen3.5:9b` is the
+lighter option and still follows citations well.
 
 > **GPU acceleration.** `pip install torch` gives a CPU-only build, which makes
 > embedding roughly 12x slower. On an NVIDIA card, install the CUDA build
