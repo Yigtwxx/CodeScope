@@ -1,237 +1,296 @@
+"""Repository ingestion: crawl, chunk, enrich and index a codebase."""
+
+from __future__ import annotations
+
 import os
-import sys
+from collections import defaultdict
+from collections.abc import Iterator
+from pathlib import Path
 
-# Windows konsolu için UTF-8 çıktısını garantiye al
-if sys.stdout.encoding != 'utf-8':
-    sys.stdout.reconfigure(encoding='utf-8')
-
-from typing import List
-from langchain_community.document_loaders import TextLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter, Language
 from langchain_core.documents import Document
-from app.db.chroma import get_vector_store
+from langchain_text_splitters import Language, RecursiveCharacterTextSplitter
 
-# Kod dosyaları için desteklenen uzantılar
+from app.core.config import settings
+from app.core.logging import get_logger
+from app.db.chroma import get_vector_store, reset_vector_store
+from app.services.hybrid_search import get_hybrid_searcher
+
+logger = get_logger(__name__)
+
+# Extensions that get indexed for semantic search.
 SUPPORTED_EXTENSIONS = {
-    ".py", ".js", ".ts", ".tsx", ".jsx", ".md", ".txt", 
-    ".java", ".go", ".cpp", ".c", ".h", ".cs", ".php", ".rb", ".rs", ".swift", ".kt"
+    ".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".go", ".cpp", ".c", ".h",
+    ".hpp", ".cs", ".php", ".rb", ".rs", ".swift", ".kt", ".scala", ".sql",
+    ".sh", ".md", ".txt", ".rst", ".yaml", ".yml", ".toml", ".json",
+}  # fmt: skip
+
+IGNORED_DIRECTORIES = {
+    ".git", ".hg", ".svn", "node_modules", "__pycache__", ".mypy_cache",
+    ".pytest_cache", ".ruff_cache", "venv", ".venv", "env", ".idea", ".vscode",
+    "dist", "build", "out", "target", "coverage", ".next", ".nuxt", ".turbo",
+    "chroma_db",
+}  # fmt: skip
+
+# Lock files and generated bundles are large and carry no useful signal.
+IGNORED_FILENAMES = {
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "poetry.lock",
+    "Cargo.lock",
+    "composer.lock",
 }
 
-# Göz ardı edilecek dizinler
-IGNORED_DIRS = {
-    ".git", "node_modules", "__pycache__", "venv", "env", ".idea", ".vscode", "dist", "build", "coverage"
+EXTENSION_LANGUAGES = {
+    ".py": "python",
+    ".js": "javascript",
+    ".jsx": "javascript",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".java": "java",
+    ".go": "go",
+    ".cpp": "cpp",
+    ".c": "c",
+    ".h": "c",
+    ".hpp": "cpp",
+    ".cs": "csharp",
+    ".php": "php",
+    ".rb": "ruby",
+    ".rs": "rust",
+    ".swift": "swift",
+    ".kt": "kotlin",
+    ".scala": "scala",
+    ".sql": "sql",
+    ".sh": "bash",
+    ".md": "markdown",
+    ".txt": "text",
+    ".rst": "text",
+    ".yaml": "yaml",
+    ".yml": "yaml",
+    ".toml": "toml",
+    ".json": "json",
 }
 
-# Toplu işlem yapılandırması
-BATCH_SIZE = 166  # ChromaDB için güvenli toplu işlem boyutu (sınır ~5000)
-BATCH_DELETE_LIMIT = 5000  # Tek seferde silinecek maksimum ID sayısı
+# Splitters that understand language syntax produce far better chunk boundaries.
+SPLITTER_LANGUAGES = {
+    ".py": Language.PYTHON,
+    ".js": Language.JS,
+    ".jsx": Language.JS,
+    ".ts": Language.TS,
+    ".tsx": Language.TS,
+    ".java": Language.JAVA,
+    ".cpp": Language.CPP,
+    ".c": Language.CPP,
+    ".hpp": Language.CPP,
+    ".h": Language.CPP,
+    ".go": Language.GO,
+    ".rs": Language.RUST,
+    ".cs": Language.CSHARP,
+    ".php": Language.PHP,
+    ".rb": Language.RUBY,
+    ".swift": Language.SWIFT,
+    ".kt": Language.KOTLIN,
+    ".scala": Language.SCALA,
+    ".md": Language.MARKDOWN,
+}
 
-def is_valid_file(file_path: str) -> bool:
-    ext = os.path.splitext(file_path)[1]
-    return ext in SUPPORTED_EXTENSIONS
 
 def detect_language(extension: str) -> str:
-    """Dosya uzantısından programlama dilini tespit eder"""
-    lang_map = {
-        ".py": "python",
-        ".js": "javascript",
-        ".jsx": "javascript",
-        ".ts": "typescript",
-        ".tsx": "typescript",
-        ".java": "java",
-        ".go": "go",
-        ".cpp": "cpp",
-        ".c": "c",
-        ".h": "c",
-        ".cs": "csharp",
-        ".php": "php",
-        ".rb": "ruby",
-        ".rs": "rust",
-        ".swift": "swift",
-        ".kt": "kotlin",
-        ".md": "markdown",
-        ".txt": "text",
-    }
-    return lang_map.get(extension, "unknown")
+    """Map a file extension to a language label used in metadata and prompts."""
+    return EXTENSION_LANGUAGES.get(extension.lower(), "unknown")
 
-def get_code_aware_splitter(extension: str) -> RecursiveCharacterTextSplitter:
-    """Daha iyi parçalama (chunking) için dile özel kod ayırıcısını getirir"""
-    lang_splitter_map = {
-        ".py": Language.PYTHON,
-        ".js": Language.JS,
-        ".jsx": Language.JS,
-        ".ts": Language.TS,
-        ".tsx": Language.TS,
-        ".java": Language.JAVA,
-        ".cpp": Language.CPP,
-        ".c": Language.CPP,
-        ".go": Language.GO,
-        ".rs": Language.RUST,
-        ".md": Language.MARKDOWN,
-    }
-    
-    try:
-        if extension in lang_splitter_map:
+
+def get_splitter(extension: str) -> RecursiveCharacterTextSplitter:
+    """Return a syntax-aware splitter for ``extension``, or a generic fallback."""
+    language = SPLITTER_LANGUAGES.get(extension.lower())
+    if language is not None:
+        try:
             return RecursiveCharacterTextSplitter.from_language(
-                language=lang_splitter_map[extension],
-                chunk_size=1000,
-                chunk_overlap=200,
+                language=language,
+                chunk_size=settings.CHUNK_SIZE,
+                chunk_overlap=settings.CHUNK_OVERLAP,
+                # Needed to map chunks back to line ranges for code intelligence.
+                add_start_index=True,
             )
-    except Exception as e:
-        print(f"⚠️  Language splitter failed for {extension}: {e}")
-    
-    # Genel ayırıcıya (fallback) dön
+        except (ValueError, KeyError):
+            logger.debug("No syntax splitter for %s; using the generic one", extension)
+
     return RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200,
+        chunk_size=settings.CHUNK_SIZE,
+        chunk_overlap=settings.CHUNK_OVERLAP,
         length_function=len,
+        add_start_index=True,
     )
 
-def load_documents(repo_path: str) -> List[Document]:
-    documents = []
-    for root, dirs, files in os.walk(repo_path):
-        # Yoksayılan dizinleri atlamak için dirs listesini yerinde değiştir
-        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
-        
-        for file in files:
-            file_path = os.path.join(root, file)
-            if is_valid_file(file_path):
-                try:
-                    ext = os.path.splitext(file_path)[1]
-                    # Dosyayı UTF-8 olarak yükle, kodlamayı otomatik algıla
-                    loader = TextLoader(file_path, encoding="utf-8", autodetect_encoding=True)
-                    docs = loader.load()
-                    
-                    # Zenginleştirilmiş metadata ekle
-                    for doc in docs:
-                        doc.metadata["source"] = file_path
-                        doc.metadata["filename"] = file
-                        doc.metadata["extension"] = ext
-                        doc.metadata["language"] = detect_language(ext)
-                        doc.metadata["relative_path"] = os.path.relpath(file_path, repo_path)
-                    
-                    documents.extend(docs)
-                except Exception as e:
-                    print(f"Error loading file {file_path}: {e}")
+
+def _looks_binary(path: Path) -> bool:
+    """Detect binary files cheaply by looking for a NUL byte in the first 8 KB."""
+    try:
+        with path.open("rb") as handle:
+            return b"\x00" in handle.read(8192)
+    except OSError:
+        return True
+
+
+def iter_source_files(repo_path: Path) -> Iterator[Path]:
+    """Yield every indexable source file below ``repo_path``."""
+    for current_dir, dirnames, filenames in os.walk(repo_path, onerror=lambda _: None):
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if d not in IGNORED_DIRECTORIES and not d.startswith(".")
+        ]
+        for filename in filenames:
+            if filename in IGNORED_FILENAMES:
+                continue
+            path = Path(current_dir) / filename
+            if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                continue
+            try:
+                if path.stat().st_size > settings.MAX_INGEST_FILE_SIZE_BYTES:
+                    logger.debug("Skipping oversized file %s", path)
                     continue
+            except OSError:
+                continue
+            if _looks_binary(path):
+                continue
+            yield path
+
+
+def load_documents(repo_path: Path) -> list[Document]:
+    """Read every indexable file into a ``Document`` with rich metadata."""
+    documents: list[Document] = []
+
+    for path in iter_source_files(repo_path):
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            logger.warning("Could not read %s: %s", path, exc)
+            continue
+
+        if not text.strip():
+            continue
+
+        extension = path.suffix.lower()
+        documents.append(
+            Document(
+                page_content=text,
+                metadata={
+                    "source": str(path),
+                    "filename": path.name,
+                    "extension": extension,
+                    "language": detect_language(extension),
+                    "relative_path": path.relative_to(repo_path).as_posix(),
+                },
+            )
+        )
+
     return documents
 
-def ingest_repository_stream(repo_path: str):
+
+def chunk_documents(documents: list[Document]) -> list[Document]:
+    """Split documents into chunks using a splitter chosen per language."""
+    by_extension: dict[str, list[Document]] = defaultdict(list)
+    for document in documents:
+        by_extension[document.metadata.get("extension", ".txt")].append(document)
+
+    chunks: list[Document] = []
+    for extension, group in by_extension.items():
+        produced = get_splitter(extension).split_documents(group)
+        chunks.extend(produced)
+        logger.info(
+            "%-12s %4d chunks from %3d files",
+            detect_language(extension),
+            len(produced),
+            len(group),
+        )
+
+    return chunks
+
+
+def ingest_repository_stream(repo_path: str | Path) -> Iterator[str]:
+    """Ingest a repository, yielding human-readable progress lines.
+
+    The generator is consumed by a streaming HTTP response, so every stage
+    reports progress instead of blocking silently for minutes.
     """
-    Bir depoyu (repository) işler ve ilerleme durumunu parça parça (yield) döndürür.
-    """
-    yield "📦 Starting repository ingestion...\n"
-    print("\n" + "="*60)
-    print("🚀 STARTING REPOSITORY INGESTION")
-    print("="*60)
-    
-    if not os.path.exists(repo_path):
-        error_msg = f"❌ ERROR: Repository path not found: {repo_path}"
-        print(error_msg)
-        yield error_msg + "\n"
+    root = Path(repo_path).resolve()
+
+    yield "Starting repository ingestion\n"
+    logger.info("Ingesting %s", root)
+
+    if not root.is_dir():
+        message = f"ERROR: not a directory: {root}"
+        logger.error(message)
+        yield message + "\n"
         return
-    
-    print(f"📂 Repository: {repo_path}")
-    yield f"📂 Repository: {repo_path}\n"
 
-    # 1. Belgeleri Yükle
-    step_msg = "\n📖 STEP 1/3: Loading documents..."
-    print(step_msg)
-    yield step_msg + "\n"
-    
-    raw_documents = load_documents(repo_path)
-    if not raw_documents:
-        error_msg = "⚠️  No valid documents found"
-        print(error_msg)
-        yield error_msg + "\n"
+    yield f"Repository: {root}\n"
+
+    # --- 1. Load ---------------------------------------------------------------
+    yield "\nStep 1/4  Reading source files...\n"
+    documents = load_documents(root)
+    if not documents:
+        message = "No indexable files found. Supported extensions: " + ", ".join(
+            sorted(SUPPORTED_EXTENSIONS)
+        )
+        logger.warning(message)
+        yield message + "\n"
         return
-    
-    success_msg = f"✅ Loaded {len(raw_documents)} files"
-    print(success_msg)
-    yield success_msg + "\n"
+    yield f"  Loaded {len(documents)} files\n"
 
-    # 2. Metni Koda Duyarlı Parçala (Code-Aware Chunking)
-    step_msg = "\n✂️  STEP 2/3: Code-aware chunking..."
-    print(step_msg)
-    yield step_msg + "\n"
-    chunks = []
-    
-    # Verimli işleme için belgeleri uzantılarına göre grupla
-    from collections import defaultdict
-    docs_by_ext = defaultdict(list)
-    for doc in raw_documents:
-        ext = doc.metadata.get("extension", ".txt")
-        docs_by_ext[ext].append(doc)
-    
-    # Her uzantı grubunu uygun ayırıcı ile işle
-    for ext, docs in docs_by_ext.items():
-        splitter = get_code_aware_splitter(ext)
-        lang = detect_language(ext)
-        ext_chunks = splitter.split_documents(docs)
-        chunks.extend(ext_chunks)
-        print(f"   💎 {lang.capitalize():12} → {len(ext_chunks):4} chunks from {len(docs):3} files")
-    
-    total_msg = f"✅ Total chunks: {len(chunks)}"
-    print(total_msg)
-    yield total_msg + "\n"
-    
-    # 2.5. Kod Zekasını Çıkar (AST Parsing)
-    try:
-        from app.services.code_intelligence import extract_code_entities, add_entities_to_metadata
-        print("\n🧠 Extracting code intelligence (functions, classes)...")
-        yield "\n🧠 Extracting code intelligence...\n"
-        
-        entities_by_file = extract_code_entities(raw_documents)
-        if entities_by_file:
-            chunks = add_entities_to_metadata(chunks, entities_by_file)
-            yield "✅ Code intelligence extracted\n"
-    except Exception as e:
-        print(f"⚠️  Code intelligence failed (non-critical): {e}")
-        yield f"⚠️  Code intelligence skipped: {str(e)}\n"
+    # --- 2. Chunk --------------------------------------------------------------
+    yield "\nStep 2/4  Splitting into code-aware chunks...\n"
+    chunks = chunk_documents(documents)
+    if not chunks:
+        yield "  No chunks were produced; aborting.\n"
+        return
+    yield f"  Produced {len(chunks)} chunks\n"
 
-    # 3. Vektör Veritabanında Sakla (ChromaDB)
-    step_msg = "\n💾 STEP 3/3: Storing in ChromaDB..."
-    print(step_msg)
-    yield step_msg + "\n"
-    vector_store = get_vector_store()
-    
-    # Depo değişikliğini desteklemek için mevcut belgeleri temizle
-    print("🧹 Clearing old repository data...")
+    # --- 3. Enrich -------------------------------------------------------------
+    yield "\nStep 3/4  Extracting functions and classes...\n"
     try:
-        existing_docs = vector_store.get()
-        ids_to_delete = existing_docs.get('ids', [])
-        
-        if ids_to_delete:
-            print(f"   🗑️  Deleting {len(ids_to_delete)} existing chunks...")
-            # Büyük veri kümeleri için partiler halinde sil
-            for i in range(0, len(ids_to_delete), BATCH_DELETE_LIMIT):
-                batch_ids = ids_to_delete[i : i + BATCH_DELETE_LIMIT]
-                vector_store.delete(batch_ids)
-            print("   ✅ Old data cleared")
+        from app.services.code_intelligence import (
+            add_entities_to_metadata,
+            extract_code_entities,
+        )
+
+        entities = extract_code_entities(documents)
+        if entities:
+            chunks = add_entities_to_metadata(chunks, entities)
+            total = sum(len(items) for items in entities.values())
+            yield f"  Indexed {total} entities across {len(entities)} files\n"
         else:
-            print("   ℹ️  No existing data (fresh database)")
-    except Exception as e:
-        print(f"   ⚠️  Cleanup warning: {e}")
+            yield "  No parseable entities found\n"
+    except Exception as exc:
+        # AST extraction is an enhancement; never fail ingestion because of it.
+        logger.exception("Code intelligence extraction failed")
+        yield f"  Skipped (non-critical): {exc}\n"
 
-    # Belgeleri partiler halinde depoya ekle
-    print(f"📥 Adding {len(chunks)} chunks to vector store...")
+    # --- 4. Index --------------------------------------------------------------
+    yield "\nStep 4/4  Writing to the vector store...\n"
     try:
-        if chunks:
-            total_chunks = len(chunks)
-            batch_count = (total_chunks + BATCH_SIZE - 1) // BATCH_SIZE
-            for i in range(0, total_chunks, BATCH_SIZE):
-                batch = chunks[i : i + BATCH_SIZE]
-                batch_num = i // BATCH_SIZE + 1
-                print(f"   📦 Batch {batch_num}/{batch_count}: {len(batch)} chunks")
-                vector_store.add_documents(batch)
-            print("   ✅ All chunks stored successfully")
-        else:
-            print("   ⚠️  No chunks to add")
-    except Exception as e:
-        print(f"   ❌ Failed to add documents: {e}")
-        raise
+        reset_vector_store()
+        get_hybrid_searcher().invalidate()
+    except Exception as exc:
+        logger.exception("Could not clear the previous index")
+        yield f"ERROR: could not clear the previous index: {exc}\n"
+        return
 
-    complete_msg = "\n" + "="*60 + "\n🎉 INGESTION COMPLETE!\n" + f"   📁 Files: {len(raw_documents)}\n" + f"   🧩 Chunks: {len(chunks)}\n" + "="*60
-    print(complete_msg)
-    yield complete_msg + "\n"
+    store = get_vector_store()
+    batch_size = settings.INGEST_BATCH_SIZE
+    total_batches = (len(chunks) + batch_size - 1) // batch_size
 
+    try:
+        for batch_number, start in enumerate(range(0, len(chunks), batch_size), 1):
+            store.add_documents(chunks[start : start + batch_size])
+            yield f"  Batch {batch_number}/{total_batches} stored\n"
+    except Exception as exc:
+        logger.exception("Failed to write chunks to the vector store")
+        yield f"ERROR: indexing failed: {exc}\n"
+        return
+
+    logger.info("Ingestion complete: %s files, %s chunks", len(documents), len(chunks))
+    yield (
+        f"\nINGESTION COMPLETE\n  Files:  {len(documents)}\n  Chunks: {len(chunks)}\n"
+    )
