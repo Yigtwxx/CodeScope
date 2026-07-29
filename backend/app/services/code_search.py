@@ -1,233 +1,250 @@
-import os
-import re
-from typing import List, Dict, Any
-from pathlib import Path
-from rapidfuzz import fuzz
-from app.core.config import settings
+"""Plain-text repository search (regular expressions and fuzzy matching).
 
+Both search modes stream through the repository once, skipping binary blobs,
+vendored directories and oversized files, and return matches with a couple of
+lines of surrounding context.
+"""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Iterator
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from rapidfuzz import fuzz
+
+from app.core.config import settings
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
+
+# File types worth searching. Anything else is treated as binary or noise.
+SEARCHABLE_EXTENSIONS = {
+    ".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".cpp", ".c", ".h", ".hpp",
+    ".cs", ".go", ".rs", ".rb", ".php", ".swift", ".kt", ".m", ".mm", ".scala",
+    ".html", ".css", ".scss", ".sass", ".less", ".vue", ".svelte",
+    ".json", ".yaml", ".yml", ".xml", ".toml", ".ini", ".cfg", ".env.example",
+    ".md", ".txt", ".rst", ".adoc", ".tex",
+    ".sql", ".sh", ".bash", ".zsh", ".fish", ".ps1", ".bat", ".cmd",
+}  # fmt: skip
+
+# Directories that are never worth walking into.
+IGNORED_DIRECTORIES = {
+    "node_modules", ".git", ".hg", ".svn", ".venv", "venv", "env",
+    "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache",
+    ".next", ".nuxt", ".turbo", "dist", "build", "out", "target",
+    ".cache", "coverage", "vendor", "tmp", "temp", "chroma_db",
+}  # fmt: skip
+
+# Regex features that make catastrophic backtracking likely on large files.
+_NESTED_QUANTIFIER = re.compile(r"\([^)]*[+*]\)[+*{]")
+MAX_PATTERN_LENGTH = 200
+CONTEXT_LINES = 2
+
+
+@dataclass(slots=True)
 class SearchResult:
-    """Tek bir arama sonucunu temsil eder."""
-    def __init__(self, file_path: str, line_number: int, line_content: str, context_before: List[str] = None, context_after: List[str] = None):
-        self.file_path = file_path # Dosya yolu
-        self.line_number = line_number # Eşleşmenin bulunduğu satır numarası
-        self.line_content = line_content # Eşleşen satırın içeriği
-        self.context_before = context_before or [] # Eşleşmeden önceki satırlar (bağlam için)
-        self.context_after = context_after or [] # Eşleşmeden sonraki satırlar (bağlam için)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Arama sonucunu sözlük formatına çevirir."""
+    """A single matching line together with its location and context."""
+
+    file_path: str
+    absolute_path: str
+    line_number: int
+    line_content: str
+    context_before: list[str] = field(default_factory=list)
+    context_after: list[str] = field(default_factory=list)
+    score: float | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialise into the shape the API returns."""
         return {
             "file": self.file_path,
+            "absolute_path": self.absolute_path,
             "line_number": self.line_number,
             "line_content": self.line_content,
             "context_before": self.context_before,
-            "context_after": self.context_after
+            "context_after": self.context_after,
+            "score": self.score,
         }
 
-# Aranabilir dosya uzantıları
-SEARCHABLE_EXTENSIONS = {
-    '.py', '.js', '.jsx', '.ts', '.tsx', '.java', '.cpp', '.c', '.h', 
-    '.cs', '.go', '.rs', '.rb', '.php', '.swift', '.kt', '.m', '.mm',
-    '.html', '.css', '.scss', '.sass', '.less', '.vue', '.svelte',
-    '.json', '.yaml', '.yml', '.xml', '.toml', '.ini', '.cfg',
-    '.md', '.txt', '.rst', '.adoc', '.tex',
-    '.sql', '.sh', '.bash', '.zsh', '.fish', '.ps1', '.bat', '.cmd'
-}
 
-# Göz ardı edilecek dizinler
-IGNORE_DIRS = {
-    'node_modules', '.git', '.venv', 'venv', '__pycache__', 
-    '.next', 'dist', 'build', 'out', '.cache', 'coverage',
-    'vendor', 'env', '.env', 'tmp', 'temp'
-}
+class InvalidPatternError(ValueError):
+    """Raised for regex patterns that are malformed or unsafe to run."""
 
-def should_ignore_path(path: Path) -> bool:
-    """Yolun göz ardı edilip edilmeyeceğini kontrol eder."""
-    parts = path.parts
-    return any(ignored in parts for ignored in IGNORE_DIRS)
 
-def is_searchable_file(file_path: Path) -> bool:
-    """Dosyanın aranabilir olup olmadığını kontrol eder."""
-    if should_ignore_path(file_path):
-        return False
-    
-    # Uzantı kontrolü
-    if file_path.suffix.lower() not in SEARCHABLE_EXTENSIONS:
-        return False
-    
-    # Dosya boyutu kontrolü (5MB'den büyük dosyaları atla)
+def compile_pattern(pattern: str) -> re.Pattern[str]:
+    """Compile a user-supplied regex, rejecting unsafe constructs.
+
+    Raises:
+        InvalidPatternError: The pattern is malformed, too long, or contains a
+            nested quantifier that can trigger catastrophic backtracking.
+    """
+    if len(pattern) > MAX_PATTERN_LENGTH:
+        raise InvalidPatternError(
+            f"Pattern is too long (max {MAX_PATTERN_LENGTH} characters)"
+        )
+
+    if _NESTED_QUANTIFIER.search(pattern):
+        raise InvalidPatternError(
+            "Pattern contains a nested quantifier such as (a+)+, which can hang "
+            "the search. Please simplify it."
+        )
+
     try:
-        if file_path.stat().st_size > 5 * 1024 * 1024:
-            return False
-    except:
-        return False
-    
-    return True
+        return re.compile(pattern, re.IGNORECASE)
+    except re.error as exc:
+        raise InvalidPatternError(f"Invalid regex pattern: {exc}") from exc
 
-def get_file_context(lines: List[str], line_idx: int, context_lines: int = 2) -> tuple[List[str], List[str]]:
-    """Eşleşen satırın öncesinden ve sonrasından bağlam satırlarını alır."""
-    before = lines[max(0, line_idx - context_lines):line_idx]
-    after = lines[line_idx + 1:min(len(lines), line_idx + 1 + context_lines)]
+
+def _is_searchable(path: Path) -> bool:
+    """Return whether a file should be scanned."""
+    if path.suffix.lower() not in SEARCHABLE_EXTENSIONS:
+        return False
+    try:
+        return path.stat().st_size <= settings.SEARCH_MAX_FILE_SIZE_BYTES
+    except OSError:
+        return False
+
+
+def iter_searchable_files(root: Path) -> Iterator[Path]:
+    """Yield every searchable file under ``root``, pruning ignored directories.
+
+    ``Path.rglob`` cannot prune, so it would descend into ``node_modules`` and
+    stat tens of thousands of files before discarding them. ``os.walk`` lets us
+    cut those subtrees off entirely.
+    """
+    import os
+
+    scanned = 0
+    for current_dir, dirnames, filenames in os.walk(root, onerror=lambda _: None):
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if d not in IGNORED_DIRECTORIES and not d.startswith(".")
+        ]
+        for filename in filenames:
+            if scanned >= settings.SEARCH_MAX_FILES:
+                logger.warning(
+                    "Stopped walking after %s files", settings.SEARCH_MAX_FILES
+                )
+                return
+            candidate = Path(current_dir) / filename
+            if _is_searchable(candidate):
+                scanned += 1
+                yield candidate
+
+
+def _read_lines(path: Path) -> list[str] | None:
+    """Read a file as text lines, returning ``None`` when it is unreadable."""
+    try:
+        with path.open("r", encoding="utf-8", errors="ignore") as handle:
+            return handle.read().splitlines()
+    except (OSError, UnicodeError):
+        return None
+
+
+def _context(lines: list[str], index: int) -> tuple[list[str], list[str]]:
+    """Return the lines immediately before and after ``index``."""
+    before = lines[max(0, index - CONTEXT_LINES) : index]
+    after = lines[index + 1 : index + 1 + CONTEXT_LINES]
     return before, after
 
-def regex_search(pattern: str, repo_path: str, max_results: int = 100) -> List[SearchResult]:
-    """
-    Depoda regex (düzenli ifade) modeli kullanarak arama yapar.
-    
-    Args:
-        pattern: Aranacak regex modeli
-        repo_path: Depo yolu
-        max_results: Döndürülecek maksimum sonuç sayısı
-    
-    Returns:
-        SearchResult nesnelerinden oluşan liste
-    """
-    results = []
-    
-    # Yolu normalize et ve varlığını doğrula
-    repo = Path(repo_path).resolve()
-    
-    print(f"🔍 [Regex Search] Starting search in: {repo}")
-    print(f"🔍 [Regex Search] Pattern: {pattern}")
-    
-    if not repo.exists():
-        print(f"❌ [Regex Search] Path does not exist: {repo}")
-        return []
-    
-    if not repo.is_dir():
-        print(f"❌ [Regex Search] Path is not a directory: {repo}")
-        return []
-    
-    try:
-        # Regex modelini derle
-        regex = re.compile(pattern, re.IGNORECASE)
-    except re.error as e:
-        raise ValueError(f"Invalid regex pattern: {str(e)}")
-    
-    # Dosyaları gez
-    file_count = 0
-    for file_path in repo.rglob('*'):
-        # Çok fazla dosya tarandıysa dur
-        if file_count >= 10000:
-            break
-        
-        if not file_path.is_file():
-            continue
-        
-        if not is_searchable_file(file_path):
-            continue
-        
-        file_count += 1
-        
-        try:
-            # Dosya içeriğini oku
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                lines = f.readlines()
-            
-            # Her satırı tara
-            for line_idx, line in enumerate(lines):
-                if regex.search(line):
-                    # Bağlamı (önceki ve sonraki satırlar) al
-                    before, after = get_file_context(lines, line_idx)
-                    
-                    # Sonuç oluştur
-                    result = SearchResult(
-                        file_path=str(file_path.relative_to(repo)),
-                        line_number=line_idx + 1,
-                        line_content=line.rstrip('\n'),
-                        context_before=[l.rstrip('\n') for l in before],
-                        context_after=[l.rstrip('\n') for l in after]
-                    )
-                    results.append(result)
-                    
-                    # Yeterli sonuç bulunduysa dur
-                    if len(results) >= max_results:
-                        return results
-        
-        except Exception as e:
-            # Okunamayan dosyaları atla
-            continue
-    
-    return results
 
-def fuzzy_search(query: str, repo_path: str, threshold: int = 70, max_results: int = 100) -> List[SearchResult]:
-    """
-    Depoda bulanık (fuzzy) eşleştirme kullanarak arama yapar.
-    
-    Args:
-        query: Aranacak sorgu metni
-        repo_path: Depo yolu
-        threshold: Minimum benzerlik skoru (0-100)
-        max_results: Döndürülecek maksimum sonuç sayısı
-    
-    Returns:
-        Benzerlik skoruna göre sıralanmış SearchResult listesi
-    """
-    results_with_scores = []
-    
-    # Yolu normalize et ve doğrula
-    repo = Path(repo_path).resolve()
-    
-    print(f"⚡ [Fuzzy Search] Starting search in: {repo}")
-    print(f"⚡ [Fuzzy Search] Query: {query}")
-    print(f"⚡ [Fuzzy Search] Threshold: {threshold}%")
-    
-    if not repo.exists():
-        print(f"❌ [Fuzzy Search] Path does not exist: {repo}")
-        return []
-    
-    if not repo.is_dir():
-        print(f"❌ [Fuzzy Search] Path is not a directory: {repo}")
-        return []
-    
-    # Dosyaları gez
-    file_count = 0
-    for file_path in repo.rglob('*'):
-        # Çok fazla dosya tarandıysa dur
-        if file_count >= 10000:
-            break
-        
-        if not file_path.is_file():
-            continue
-        
-        if not is_searchable_file(file_path):
-            continue
-        
-        file_count += 1
-        
-        try:
-            # Dosya içeriğini oku
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                lines = f.readlines()
-            
-            # Her satırı tara
-            for line_idx, line in enumerate(lines):
-                # Benzerlik skorunu hesapla
-                score = fuzz.partial_ratio(query.lower(), line.lower())
-                
-                if score >= threshold:
-                    # Bağlamı al
-                    before, after = get_file_context(lines, line_idx)
-                    
-                    # Sonuç ve skor ile birlikte nesne oluştur
-                    result = SearchResult(
-                        file_path=str(file_path.relative_to(repo)),
-                        line_number=line_idx + 1,
-                        line_content=line.rstrip('\n'),
-                        context_before=[l.rstrip('\n') for l in before],
-                        context_after=[l.rstrip('\n') for l in after]
-                    )
-                    results_with_scores.append((result, score))
-                    
-                    # Çok fazla sonuç varsa dur (daha sonra sıralayıp kırpacağız)
-                    if len(results_with_scores) >= max_results * 2:
-                        break
-        
-        except Exception as e:
-            # Okunamayan dosyaları atla
-            continue
-    
-    # Skora göre sırala (en yüksek önce) ve en iyi sonuçları döndür
-    results_with_scores.sort(key=lambda x: x[1], reverse=True)
-    return [result for result, score in results_with_scores[:max_results]]
+def _build_result(
+    path: Path,
+    root: Path,
+    lines: list[str],
+    index: int,
+    score: float | None = None,
+) -> SearchResult:
+    before, after = _context(lines, index)
+    return SearchResult(
+        file_path=path.relative_to(root).as_posix(),
+        # The frontend needs the absolute path to open the file in the viewer.
+        absolute_path=str(path),
+        line_number=index + 1,
+        line_content=lines[index],
+        context_before=before,
+        context_after=after,
+        score=score,
+    )
 
+
+def regex_search(
+    pattern: str, repo_path: str | Path, max_results: int | None = None
+) -> tuple[list[SearchResult], bool]:
+    """Search a repository with a regular expression.
+
+    Returns:
+        The matches found and a flag indicating whether the limit truncated them.
+    """
+    limit = max_results or settings.SEARCH_MAX_RESULTS
+    root = Path(repo_path).resolve()
+    if not root.is_dir():
+        logger.warning("Regex search target is not a directory: %s", root)
+        return [], False
+
+    regex = compile_pattern(pattern)
+    logger.info("Regex search %r in %s", pattern, root)
+
+    results: list[SearchResult] = []
+    for file_path in iter_searchable_files(root):
+        lines = _read_lines(file_path)
+        if lines is None:
+            continue
+        for index, line in enumerate(lines):
+            if regex.search(line):
+                results.append(_build_result(file_path, root, lines, index))
+                if len(results) >= limit:
+                    return results, True
+
+    logger.info("Regex search finished with %s matches", len(results))
+    return results, False
+
+
+def fuzzy_search(
+    query: str,
+    repo_path: str | Path,
+    threshold: int = 70,
+    max_results: int | None = None,
+) -> tuple[list[SearchResult], bool]:
+    """Search a repository with typo-tolerant fuzzy matching.
+
+    Returns:
+        Matches sorted by descending similarity, and a truncation flag.
+    """
+    limit = max_results or settings.SEARCH_MAX_RESULTS
+    root = Path(repo_path).resolve()
+    if not root.is_dir():
+        logger.warning("Fuzzy search target is not a directory: %s", root)
+        return [], False
+
+    logger.info("Fuzzy search %r in %s (threshold=%s)", query, root, threshold)
+    needle = query.lower()
+    # Collect more than we need so the ranking has something to choose from.
+    scan_budget = limit * 5
+    scored: list[SearchResult] = []
+    truncated = False
+
+    for file_path in iter_searchable_files(root):
+        if len(scored) >= scan_budget:
+            truncated = True
+            break
+        lines = _read_lines(file_path)
+        if lines is None:
+            continue
+        for index, line in enumerate(lines):
+            if not line.strip():
+                continue
+            score = fuzz.partial_ratio(needle, line.lower())
+            if score >= threshold:
+                scored.append(_build_result(file_path, root, lines, index, score))
+                if len(scored) >= scan_budget:
+                    truncated = True
+                    break
+
+    scored.sort(key=lambda result: result.score or 0, reverse=True)
+    if len(scored) > limit:
+        truncated = True
+    logger.info("Fuzzy search finished with %s matches", len(scored))
+    return scored[:limit], truncated
