@@ -1,81 +1,81 @@
-# FastAPI framework'ünü içe aktarıyoruz
+"""CodeScope API entry point."""
+
+from __future__ import annotations
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
-# CORS (Cross-Origin Resource Sharing) ayarları için middleware
 from fastapi.middleware.cors import CORSMiddleware
-# Uygulama ayarlarını yapılandırma dosyasından alıyoruz
-from app.core.config import settings
-# API yönlendirmelerini (router) içe aktarıyoruz
+
 from app.api.endpoints import router as api_router
+from app.api.files import router as files_router
+from app.api.schemas import HealthResponse
+from app.core.config import settings
+from app.core.device import resolve_device
+from app.core.logging import configure_logging, get_logger
+from app.db.chroma import count_documents, delete_persisted_data
 
-# FastAPI uygulamasını başlatıyoruz, proje adı ve versiyon bilgisini ayarlardan alıyoruz
-app = FastAPI(title=settings.PROJECT_NAME, version=settings.VERSION)
-
-# Başlangıç Temizliği: Temiz bir başlangıç sağlamak için mevcut vektör veritabanını temizle
-import shutil
-import os
-import sys
-
-# Windows üzerinde emojilerin düzgün görüntülenmesi için UTF-8 çıktısını zorla
-sys.stdout.reconfigure(encoding='utf-8')
-sys.stderr.reconfigure(encoding='utf-8')
+configure_logging(settings.LOG_LEVEL)
+logger = get_logger(__name__)
 
 
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Prepare shared resources on startup.
+
+    The index is preserved across restarts by default; set
+    ``RESET_DB_ON_STARTUP=true`` to get a clean database every launch.
     """
-    Uygulama başlatıldığında çalışacak olay dinleyicisi.
-    Mevcut ChromaDB kalıcılığını (persistence) kontrol eder ve temizler.
-    Bu, her başlangıçta temiz bir veritabanı ile başlanmasını sağlar.
-    """
-    print("🧹 [Başlangıç] Temizlenecek mevcut ChromaDB kalıcılığı kontrol ediliyor...")
-    db_path = settings.CHROMA_DB_DIR
-    if os.path.exists(db_path):
-        try:
-            # Dosya mı yoksa dizin mi olduğunu kontrol et ve buna göre sil
-            if os.path.isdir(db_path):
-                shutil.rmtree(db_path)
-            else:
-                os.remove(db_path)
-            print(f"✅ [Başlangıç] Mevcut kalıcılık {db_path} konumunda temizlendi")
-        except Exception as e:
-            print(f"⚠️  [Başlangıç] Uyarı - Kalıcılık temizlenemedi: {e}")
-    else:
-        print("✨ [Başlangıç] Mevcut kalıcılık bulunamadı. Sıfırdan başlanıyor.")
+    logger.info("Starting %s v%s", settings.PROJECT_NAME, settings.VERSION)
+    logger.info("Workspace root: %s", settings.WORKSPACE_ROOT)
 
-# Tüm CORS kaynaklarına izin ver
-# Geliştirme ortamı için "*" (hepsi) kullanılır. Prodüksiyonda frontend URL'i belirtilmelidir.
+    if settings.RESET_DB_ON_STARTUP:
+        logger.info("RESET_DB_ON_STARTUP is enabled; clearing the vector store")
+        delete_persisted_data()
+
+    settings.CHROMA_DB_DIR.mkdir(parents=True, exist_ok=True)
+    yield
+    logger.info("Shutting down")
+
+
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    version=settings.VERSION,
+    description="Local-first RAG assistant for exploring a codebase.",
+    lifespan=lifespan,
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
-# Dosya işlemleri için router'ı dahil ediyoruz
-from app.api.files import router as files_router
+app.include_router(api_router, prefix=settings.API_V1_STR, tags=["rag"])
+app.include_router(files_router, prefix=f"{settings.API_V1_STR}/files", tags=["files"])
 
-# Sağlık Kontrolü (Health Check) Uç Noktası
-@app.get("/health")
-async def health_check():
-    """Uygulamanın çalışıp çalışmadığını kontrol etmek için endpoint."""
-    return {
-        "status": "healthy",
-        "service": settings.PROJECT_NAME,
-        "version": settings.VERSION
-    }
 
-# API rotalarını uygulamaya dahil ediyoruz
-app.include_router(api_router, prefix=settings.API_V1_STR)
-# Dosya işlemleri rotasını dahil ediyoruz
-app.include_router(files_router, prefix="/api/files", tags=["files"])
+@app.get("/health", response_model=HealthResponse, tags=["system"])
+async def health_check() -> HealthResponse:
+    """Report service health plus how much of the codebase is indexed."""
+    return HealthResponse(
+        service=settings.PROJECT_NAME,
+        version=settings.VERSION,
+        indexed_chunks=count_documents(),
+        embedding_device=resolve_device(),
+    )
+
 
 if __name__ == "__main__":
     import uvicorn
-    # Uygulamayı uvicorn sunucusu ile başlatıyoruz
-    # host="0.0.0.0" tüm ağ arayüzlerinden erişimi sağlar
-    # reload=True, kod değişikliklerinde sunucunun otomatik yeniden başlamasını sağlar
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
-    
-# A
 
+    uvicorn.run(
+        "main:app",
+        host="127.0.0.1",
+        port=8000,
+        reload=True,
+        log_config=None,
+    )
