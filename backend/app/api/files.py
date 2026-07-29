@@ -1,65 +1,116 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-import os
+"""File browsing endpoints backing the frontend explorer and code viewer."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, HTTPException, status
+
+from app.api.schemas import FileContentResponse, FileEntry, PathRequest
+from app.core.config import settings
+from app.core.logging import get_logger
+from app.core.paths import PathValidationError, resolve_user_path
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 
-# Dosya yolu isteği için model
-class PathRequest(BaseModel):
-    path: str
+# Directories that only add noise to a repository listing.
+HIDDEN_DIRECTORIES = {
+    "node_modules",
+    "__pycache__",
+    ".git",
+    ".next",
+    ".venv",
+    "venv",
+    "dist",
+    "build",
+}
 
-@router.post("/list")
-async def list_files(request: PathRequest):
-    """
-    Verilen yoldaki dosya ve dizinleri listeler.
-    Her öğe için isim, tür (dosya/dizin) ve tam yol bilgisini döndürür.
-    """
+
+@router.post("/list", response_model=list[FileEntry])
+async def list_files(request: PathRequest) -> list[FileEntry]:
+    """List the direct children of a directory, folders first."""
     try:
-        if not os.path.exists(request.path):
-             raise HTTPException(status_code=404, detail="Path not found")
-        
-        items = []
-        with os.scandir(request.path) as entries:
-            for entry in entries:
-                # Gizli dosyaları/dizinleri atla (nokta ile başlayanlar)
-                if entry.name.startswith('.'):
-                    continue
-                    
-                items.append({
-                    "name": entry.name,
-                    "type": "directory" if entry.is_dir() else "file",
-                    "path": entry.path
-                })
-        
-        # Önce dizinleri, sonra dosyaları sırala
-        items.sort(key=lambda x: (x["type"] != "directory", x["name"].lower()))
-        return items
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        target = resolve_user_path(request.path)
+    except PathValidationError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
-@router.post("/content")
-async def get_file_content(request: PathRequest):
-    """
-    Belirli bir dosyanın içeriğini okur ve döndürür.
-    Büyük dosyalar için boyut kontrolü yapar.
-    """
+    if not target.is_dir():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Path is not a directory")
+
+    entries: list[FileEntry] = []
     try:
-        print(f"DEBUG: Requesting content for path: {request.path}")
-        if not os.path.exists(request.path):
-            raise HTTPException(status_code=404, detail="File not found")
-        
-        if not os.path.isfile(request.path):
-             raise HTTPException(status_code=400, detail="Path is not a file")
+        for entry in target.iterdir():
+            if entry.name.startswith(".") or entry.name in HIDDEN_DIRECTORIES:
+                continue
+            try:
+                is_dir = entry.is_dir()
+            except OSError:
+                # Broken symlink or a path we lack permission to stat.
+                continue
+            entries.append(
+                FileEntry(
+                    name=entry.name,
+                    type="directory" if is_dir else "file",
+                    path=str(entry),
+                )
+            )
+    except PermissionError as exc:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Permission denied for this directory"
+        ) from exc
+    except OSError as exc:
+        logger.exception("Failed to list %s", target)
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR, "Could not read directory"
+        ) from exc
 
-        # Çok büyük dosyaların okunmasını engellemek için basit boyut kontrolü (Şimdilik 1MB sınır)
-        if os.path.getsize(request.path) > 1024 * 1024: 
-             raise HTTPException(status_code=400, detail="File too large to view")
+    entries.sort(key=lambda item: (item.type != "directory", item.name.lower()))
+    return entries
 
-        # Dosyayı UTF-8 olarak aç, okuma hatalarını 'replace' ile yönet
-        with open(request.path, 'r', encoding='utf-8', errors='replace') as f:
-            content = f.read()
-            
-        return {"content": content}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/content", response_model=FileContentResponse)
+async def get_file_content(request: PathRequest) -> FileContentResponse:
+    """Return the decoded text content of a single file."""
+    try:
+        target = resolve_user_path(request.path)
+    except PathValidationError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+
+    if not target.is_file():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Path is not a file")
+
+    try:
+        size = target.stat().st_size
+    except OSError as exc:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR, "Could not stat file"
+        ) from exc
+
+    limit = settings.MAX_FILE_SIZE_BYTES
+    truncated = size > limit
+
+    try:
+        with target.open("r", encoding="utf-8", errors="replace") as handle:
+            content = handle.read(limit)
+    except PermissionError as exc:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Permission denied for this file"
+        ) from exc
+    except OSError as exc:
+        logger.exception("Failed to read %s", target)
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR, "Could not read file"
+        ) from exc
+
+    if truncated:
+        content += (
+            f"\n\n--- File truncated at {limit // 1024} KB "
+            f"(actual size: {size // 1024} KB) ---\n"
+        )
+
+    return FileContentResponse(
+        content=content,
+        path=str(target),
+        size_bytes=size,
+        truncated=truncated,
+    )
