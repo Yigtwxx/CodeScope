@@ -3,7 +3,7 @@
 # Development-only tools live in requirements-dev.txt.
 
 # --- Web framework ---
-fastapi==0.127.0
+fastapi==0.140.7
 uvicorn[standard]==0.40.0
 pydantic==2.12.5
 pydantic-settings==2.12.0
