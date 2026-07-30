@@ -24,7 +24,7 @@ sentence-transformers==5.2.0
 
 # --- Retrieval ---
 rank-bm25==0.2.2
-rapidfuzz==3.14.3
+rapidfuzz==3.14.5
 
 # --- Code intelligence (tree-sitter grammars) ---
 tree-sitter==0.25.2
