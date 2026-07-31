@@ -1,141 +1,162 @@
-"use client"
+'use client'
 
-import { useState, useEffect, useMemo } from "react"
-import { ChevronRight, ChevronDown, File } from "lucide-react"
-
-// Dosya ağacı düğüm yapısı
-interface FileNode {
-    name: string
-    type: "file" | "directory"
-    path: string
-    children?: FileNode[]
-}
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ChevronDown, ChevronRight, File, Loader2 } from 'lucide-react'
+import { listFiles, toErrorMessage, type FileEntry } from '../lib/api'
 
 interface FileTreeProps {
-    rootPath: string
-    onSelectFile: (path: string) => void
+  rootPath: string
+  onSelectFile: (path: string) => void
+  selectedPath?: string | undefined
 }
 
-// Rekürsif dosya ağacı düğüm bileşeni
-const FileTreeNode = ({ node, level, onSelect }: { node: FileNode, level: number, onSelect: (path: string) => void }) => {
-    const [isExpanded, setIsExpanded] = useState(false)
-    const [children, setChildren] = useState<FileNode[]>([])
-    const [isLoading, setIsLoading] = useState(false)
-    const [hasLoaded, setHasLoaded] = useState(false)
+interface NodeProps {
+  entry: FileEntry
+  level: number
+  onSelect: (path: string) => void
+  selectedPath?: string | undefined
+  defaultExpanded?: boolean
+}
 
-    // Kök dizin (level 0) ise otomatik olarak yükle
-    useEffect(() => {
-        if (level === 0 && !hasLoaded) {
-            setIsLoading(true)
-            setIsExpanded(true)
-            fetch("http://localhost:8000/api/files/list", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ path: node.path })
-            })
-                .then(res => {
-                    if (res.ok) return res.json()
-                    throw new Error("Failed to load")
-                })
-                .then(data => {
-                    setChildren(data)
-                    setHasLoaded(true)
-                })
-                .catch(err => console.error("Failed to load files", err))
-                .finally(() => setIsLoading(false))
-        }
-    }, [level, hasLoaded, node])
+function FileTreeNode({
+  entry,
+  level,
+  onSelect,
+  selectedPath,
+  defaultExpanded = false,
+}: NodeProps) {
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded)
+  const [children, setChildren] = useState<FileEntry[] | undefined>(undefined)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | undefined>(undefined)
 
+  const isDirectory = entry.type === 'directory'
+  const isSelected = selectedPath === entry.path
 
-    const handleToggle = async (e: React.MouseEvent) => {
-        e.stopPropagation()
-        if (node.type === 'file') {
-            onSelect(node.path)
-            return
-        }
+  const loadChildren = useCallback(
+    async (signal?: AbortSignal) => {
+      setIsLoading(true)
+      setError(undefined)
+      try {
+        setChildren(await listFiles(entry.path, signal))
+      } catch (caught) {
+        if (caught instanceof DOMException && caught.name === 'AbortError') return
+        setError(toErrorMessage(caught))
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [entry.path]
+  )
 
-        // Klasör henüz yüklenmediyse içeriğini çek
-        if (!isExpanded && !hasLoaded) {
-            setIsLoading(true)
-            try {
-                const response = await fetch("http://localhost:8000/api/files/list", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ path: node.path })
-                })
-                if (response.ok) {
-                    const data = await response.json()
-                    setChildren(data)
-                    setHasLoaded(true)
-                }
-            } catch (error) {
-                console.error("Failed to load files", error)
-            } finally {
-                setIsLoading(false)
-            }
-        }
-        setIsExpanded(!isExpanded)
+  // The root node loads immediately; nested folders load when opened.
+  useEffect(() => {
+    if (!defaultExpanded || !isDirectory) return
+    const controller = new AbortController()
+    void loadChildren(controller.signal)
+    // Cancel the request if the repository changes while it is in flight.
+    return () => controller.abort()
+  }, [defaultExpanded, isDirectory, loadChildren])
+
+  const handleActivate = () => {
+    if (!isDirectory) {
+      onSelect(entry.path)
+      return
     }
+    if (!isExpanded && children === undefined) void loadChildren()
+    setIsExpanded((open) => !open)
+  }
 
-    return (
-        <div className="select-none">
-            <div
-                className={`flex items-center py-1.5 px-2 cursor-pointer text-sm transition-colors duration-200
-                    ${level === 0 ? 'font-medium' : ''}
-                    hover:bg-white/10 active:bg-white/20
-                    ${node.type === 'directory' ? 'text-blue-300' : 'text-gray-300'}
-                `}
-                style={{ paddingLeft: `${level * 12 + 8}px` }}
-                onClick={handleToggle}
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={handleActivate}
+        title={entry.name}
+        aria-expanded={isDirectory ? isExpanded : undefined}
+        className={`flex w-full items-center gap-2 py-1.5 pr-2 text-left text-sm transition-colors ${
+          isSelected ? 'bg-white/15 text-white' : 'hover:bg-white/10'
+        } ${isDirectory ? 'text-blue-300' : 'text-gray-300'}`}
+        style={{ paddingLeft: `${level * 12 + 8}px` }}
+      >
+        <span className="flex-shrink-0 opacity-70" aria-hidden="true">
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : isDirectory ? (
+            isExpanded ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )
+          ) : (
+            <File className="h-4 w-4" />
+          )}
+        </span>
+        <span className="truncate">{entry.name}</span>
+      </button>
+
+      {isExpanded && (
+        <div>
+          {error && (
+            <p
+              className="px-2 py-1 text-xs text-red-400"
+              style={{ paddingLeft: `${level * 12 + 28}px` }}
             >
-                <span className={`mr-2 opacity-70 ${node.type === 'directory' ? 'text-blue-400' : 'text-gray-400'}`}>
-                    {node.type === 'directory' ? (
-                        isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />
-                    ) : (
-                        <File className="h-4 w-4" />
-                    )}
-                </span>
-                <span className="truncate">
-                    {node.name}
-                </span>
-            </div>
-            {isExpanded && (
-                <div>
-                    {isLoading ? (
-                        <div className="text-xs text-white/40 pl-8">Loading...</div>
-                    ) : (
-                        children.map((child) => (
-                            <FileTreeNode key={child.path} node={child} level={level + 1} onSelect={onSelect} />
-                        ))
-                    )}
-                </div>
-            )}
+              {error}
+            </p>
+          )}
+          {!error && !isLoading && children?.length === 0 && (
+            <p
+              className="px-2 py-1 text-xs text-white/30"
+              style={{ paddingLeft: `${level * 12 + 28}px` }}
+            >
+              Empty
+            </p>
+          )}
+          {children?.map((child) => (
+            <FileTreeNode
+              key={child.path}
+              entry={child}
+              level={level + 1}
+              onSelect={onSelect}
+              selectedPath={selectedPath}
+            />
+          ))}
         </div>
-    )
+      )}
+    </div>
+  )
 }
 
-// Ana dosya ağacı bileşeni
-export function FileTree({ rootPath, onSelectFile }: FileTreeProps) {
-    const rootNode = useMemo(() => {
-        if (!rootPath) return null
-        return {
-            name: rootPath.split(/[/\\]/).pop() || "Root",
-            type: "directory" as const,
-            path: rootPath
-        }
-    }, [rootPath])
+export function FileTree({ rootPath, onSelectFile, selectedPath }: FileTreeProps) {
+  const rootEntry = useMemo<FileEntry | undefined>(() => {
+    if (!rootPath) return undefined
+    return {
+      name: rootPath.split(/[/\\]/).filter(Boolean).pop() ?? rootPath,
+      type: 'directory',
+      path: rootPath,
+    }
+  }, [rootPath])
 
-    return (
-        <div className="h-full flex flex-col">
-            <div className="p-3 border-b border-white/10 font-bold text-white/80">Explorer</div>
-            <div className="flex-1 overflow-auto p-2">
-                {rootNode ? (
-                    <FileTreeNode key={rootNode.path} node={rootNode} level={0} onSelect={onSelectFile} />
-                ) : (
-                    <div className="text-white/40 text-sm p-4 text-center">No repository loaded. Go to Settings.</div>
-                )}
-            </div>
-        </div>
-    )
+  return (
+    <div className="flex h-full w-full flex-col">
+      <nav aria-label="Repository files" className="flex-1 overflow-auto py-2">
+        {rootEntry ? (
+          // Remounting on path change resets every node's cached children.
+          <FileTreeNode
+            key={rootEntry.path}
+            entry={rootEntry}
+            level={0}
+            onSelect={onSelectFile}
+            selectedPath={selectedPath}
+            defaultExpanded
+          />
+        ) : (
+          <p className="p-4 text-center text-sm text-white/40">
+            No repository indexed yet. Open settings to add one.
+          </p>
+        )}
+      </nav>
+    </div>
+  )
 }
-
