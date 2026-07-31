@@ -1,148 +1,148 @@
-"use client"
+'use client'
 
 import { useState } from 'react'
-import { Conversation } from '../types/conversations'
-import { MessageSquare, Trash2, Edit2, Check, X } from 'lucide-react'
+import { Check, MessageSquare, Pencil, Trash2, X } from 'lucide-react'
+import type { Conversation } from '../types/conversations'
 
-// Konuşma kartı bileşeni özellikleri (props)
 interface ConversationCardProps {
-    conversation: Conversation
-    isActive: boolean
-    onClick: () => void
-    onDelete: () => void
-    onRename: (newTitle: string) => void
+  conversation: Conversation
+  isActive: boolean
+  onSelect: () => void
+  onDelete: () => void
+  onRename: (newTitle: string) => void
 }
 
 export function ConversationCard({
-    conversation,
-    isActive,
-    onClick,
-    onDelete,
-    onRename
+  conversation,
+  isActive,
+  onSelect,
+  onDelete,
+  onRename,
 }: ConversationCardProps) {
-    const [isEditing, setIsEditing] = useState(false)
-    const [editTitle, setEditTitle] = useState(conversation.title)
+  const [isEditing, setIsEditing] = useState(false)
+  const [draftTitle, setDraftTitle] = useState(conversation.title)
 
-    // Yeniden adlandırma işlemini onayla
-    const handleRename = () => {
-        if (editTitle.trim() && editTitle !== conversation.title) {
-            onRename(editTitle.trim())
-        }
-        setIsEditing(false)
-    }
+  const commitRename = () => {
+    const title = draftTitle.trim()
+    if (title && title !== conversation.title) onRename(title)
+    setIsEditing(false)
+  }
 
-    // Yeniden adlandırmayı iptal et
-    const handleCancel = () => {
-        setEditTitle(conversation.title)
-        setIsEditing(false)
-    }
+  const cancelRename = () => {
+    setDraftTitle(conversation.title)
+    setIsEditing(false)
+  }
 
-    // Mesaj önizlemesi ve zaman bilgisi
-    const messagePreview = conversation.messages[0]?.content.slice(0, 60) || 'No messages'
-    const timeAgo = getTimeAgo(conversation.updatedAt)
-    const messageCount = conversation.messages.length
-
+  if (isEditing) {
     return (
-        <div
-            className={`group p-3 rounded-lg border transition-all cursor-pointer hover:bg-white/5 ${isActive
-                ? 'bg-blue-500/10 border-blue-500/30'
-                : 'bg-black/20 border-white/10 hover:border-white/20'
-                }`}
-            onClick={!isEditing ? onClick : undefined}
+      <div className="flex items-center gap-1 rounded-lg border border-purple-500/40 bg-purple-500/10 p-2">
+        <input
+          type="text"
+          value={draftTitle}
+          onChange={(event) => setDraftTitle(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') commitRename()
+            if (event.key === 'Escape') cancelRename()
+          }}
+          onBlur={commitRename}
+          aria-label="Conversation title"
+          className="min-w-0 flex-1 rounded border border-white/20 bg-white/10 px-2 py-1 text-sm text-white focus:border-purple-400 focus:outline-none"
+          autoFocus
+        />
+        <button
+          type="button"
+          // onBlur fires before onClick, so the rename is already committed;
+          // this button exists for pointer users who expect a confirm control.
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={commitRename}
+          aria-label="Save title"
+          className="cursor-pointer rounded p-1 hover:bg-white/10"
         >
-            {/* Başlık Alanı */}
-            {isEditing ? (
-                // Düzenleme Modu
-                <div className="flex items-center gap-2 mb-2">
-                    <input
-                        type="text"
-                        value={editTitle}
-                        onChange={(e) => setEditTitle(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleRename()
-                            if (e.key === 'Escape') handleCancel()
-                        }}
-                        className="flex-1 bg-white/10 border border-white/20 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-blue-500"
-                        autoFocus
-                        onClick={(e) => e.stopPropagation()}
-                    />
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation()
-                            handleRename()
-                        }}
-                        className="p-1 hover:bg-green-500/20 rounded"
-                    >
-                        <Check className="h-4 w-4 text-green-400" />
-                    </button>
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation()
-                            handleCancel()
-                        }}
-                        className="p-1 hover:bg-red-500/20 rounded"
-                    >
-                        <X className="h-4 w-4 text-red-400" />
-                    </button>
-                </div>
-            ) : (
-                // Görüntüleme Modu
-                <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <MessageSquare className="h-4 w-4 text-blue-400 flex-shrink-0" />
-                        <h3 className="text-sm font-medium text-white truncate">
-                            {conversation.title}
-                        </h3>
-                    </div>
-                    {/* Hover ile görünen eylem butonları */}
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation()
-                                setIsEditing(true)
-                            }}
-                            className="p-1 hover:bg-blue-500/20 rounded"
-                            title="Rename"
-                        >
-                            <Edit2 className="h-3.5 w-3.5 text-blue-400" />
-                        </button>
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation()
-                                if (confirm(`Delete "${conversation.title}"?`)) {
-                                    onDelete()
-                                }
-                            }}
-                            className="p-1 hover:bg-red-500/20 rounded"
-                            title="Delete"
-                        >
-                            <Trash2 className="h-3.5 w-3.5 text-red-400" />
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* Mesaj Önizlemesi */}
-            <p className="text-xs text-white/50 truncate mb-2">{messagePreview}...</p>
-
-            {/* Meta Bilgiler (Zaman, mesaj sayısı) */}
-            <div className="flex items-center justify-between text-[10px] text-white/30">
-                <span>{timeAgo}</span>
-                <span>{messageCount} messages</span>
-            </div>
-        </div>
+          <Check className="h-4 w-4 text-green-400" />
+        </button>
+        <button
+          type="button"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={cancelRename}
+          aria-label="Cancel rename"
+          className="cursor-pointer rounded p-1 hover:bg-white/10"
+        >
+          <X className="h-4 w-4 text-white/60" />
+        </button>
+      </div>
     )
+  }
+
+  const preview =
+    conversation.messages.find((message) => message.role === 'user')?.content ??
+    conversation.messages[0]?.content ??
+    'No messages yet'
+
+  return (
+    <div
+      className={`group relative rounded-lg border transition-colors ${
+        isActive
+          ? 'border-purple-500/40 bg-purple-500/10'
+          : 'border-white/10 bg-black/20 hover:border-white/20 hover:bg-white/5'
+      }`}
+    >
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-current={isActive ? 'true' : undefined}
+        className="w-full cursor-pointer p-3 text-left"
+      >
+        <span className="flex items-center gap-2">
+          <MessageSquare
+            className={`h-4 w-4 flex-shrink-0 ${isActive ? 'text-purple-300' : 'text-white/40'}`}
+            aria-hidden="true"
+          />
+          {/* Reserve room for the hover actions so long titles do not slide under them. */}
+          <span className="truncate pr-12 text-sm font-medium text-white">
+            {conversation.title}
+          </span>
+        </span>
+        <span className="mt-1.5 block truncate text-xs text-white/40">{preview}</span>
+        <span className="mt-1.5 flex items-center justify-between text-[10px] text-white/30">
+          <span>{formatTimeAgo(conversation.updatedAt)}</span>
+          <span>
+            {conversation.messages.length}{' '}
+            {conversation.messages.length === 1 ? 'message' : 'messages'}
+          </span>
+        </span>
+      </button>
+
+      <div className="absolute right-2 top-2 flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+        <button
+          type="button"
+          onClick={() => setIsEditing(true)}
+          aria-label={`Rename ${conversation.title}`}
+          title="Rename"
+          className="cursor-pointer rounded p-1 hover:bg-white/10"
+        >
+          <Pencil className="h-3.5 w-3.5 text-white/60" />
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (window.confirm(`Delete "${conversation.title}"?`)) onDelete()
+          }}
+          aria-label={`Delete ${conversation.title}`}
+          title="Delete"
+          className="cursor-pointer rounded p-1 hover:bg-red-500/20"
+        >
+          <Trash2 className="h-3.5 w-3.5 text-white/60 hover:text-red-400" />
+        </button>
+      </div>
+    </div>
+  )
 }
 
-// Zaman farkını hesaplayan yardımcı fonksiyon
-function getTimeAgo(timestamp: number): string {
-    const seconds = Math.floor((Date.now() - timestamp) / 1000)
-
-    if (seconds < 60) return 'Just now'
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
-    if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`
-
-    return new Date(timestamp).toLocaleDateString()
+function formatTimeAgo(timestamp: number): string {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000)
+  if (seconds < 60) return 'Just now'
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
+  if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h ago`
+  if (seconds < 604_800) return `${Math.floor(seconds / 86_400)}d ago`
+  return new Date(timestamp).toLocaleDateString()
 }
-
