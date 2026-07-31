@@ -1,62 +1,63 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
+import type { Metadata, Viewport } from 'next'
+import { Geist, Geist_Mono } from 'next/font/google'
+import './globals.css'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
-// Font tanımlamaları
+// The CSS variable names must match the ones the Tailwind theme reads.
 const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+  variable: '--font-sans',
+  subsets: ['latin'],
+  display: 'swap',
+})
 
 const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+  variable: '--font-mono',
+  subsets: ['latin'],
+  display: 'swap',
+})
 
-// Uygulama üst veri bilgileri
 export const metadata: Metadata = {
-  title: "CodeScope",
-  description: "AI-powered intelligent coding assistant for exploring and understanding your codebase",
-};
+  title: 'CodeScope',
+  description:
+    'Local-first AI assistant for exploring and understanding your codebase. Nothing leaves your machine.',
+}
 
-// Kök düzen (Root Layout) bileşeni
+export const viewport: Viewport = {
+  themeColor: '#0f1117',
+  width: 'device-width',
+  initialScale: 1,
+}
+
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode;
+  children: React.ReactNode
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#0f1117] h-screen flex items-center justify-center overflow-hidden p-4 sm:p-8`}
+        className={`${geistSans.variable} ${geistMono.variable} flex h-dvh items-center justify-center overflow-hidden bg-[#0f1117] p-0 antialiased sm:p-6`}
       >
-        {/* MacBook Pencere Konteyneri - Uygulamayı bir pencere içinde gösterir */}
-        <div className="relative w-full max-w-[1400px] h-full max-h-[900px] bg-[#1a1b26]/90 backdrop-blur-xl rounded-xl border border-white/10 shadow-2xl flex flex-col overflow-hidden">
-
-          {/* Pencere Başlık Çubuğu */}
-          <div className="h-10 bg-white/5 border-b border-white/5 flex items-center px-4 justify-between shrink-0">
-            {/* Trafik Işıkları (Mac benzeri butonlar) */}
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-[#ff5f56] border border-[#e0443e]"></div>
-              <div className="w-3 h-3 rounded-full bg-[#ffbd2e] border border-[#dea123]"></div>
-              <div className="w-3 h-3 rounded-full bg-[#27c93f] border border-[#1aab29]"></div>
+        {/* Desktop-style window frame. The traffic lights belong here only; the
+            page must not draw a second set inside it. */}
+        <div className="relative flex h-full max-h-[900px] w-full max-w-[1400px] flex-col overflow-hidden border border-white/10 bg-[#1a1b26]/90 shadow-2xl backdrop-blur-xl sm:rounded-xl">
+          <div className="flex h-10 shrink-0 items-center justify-between border-b border-white/5 bg-white/5 px-4">
+            <div className="flex items-center gap-2" aria-hidden="true">
+              <span className="h-3 w-3 rounded-full border border-[#e0443e] bg-[#ff5f56]" />
+              <span className="h-3 w-3 rounded-full border border-[#dea123] bg-[#ffbd2e]" />
+              <span className="h-3 w-3 rounded-full border border-[#1aab29] bg-[#27c93f]" />
             </div>
-
-            {/* Pencere Başlığı */}
-            <div className="text-xs text-white/40 font-medium">CodeScope - Intelligent Coding Assistant</div>
-
-            {/* Simetri için boşluk */}
-            <div className="w-10"></div>
+            <p className="text-xs font-medium text-white/40">
+              CodeScope — Local Codebase Assistant
+            </p>
+            <div className="w-10" aria-hidden="true" />
           </div>
 
-          {/* Ana İçerik Alanı */}
-          <div className="flex-1 overflow-hidden flex flex-col relative text-slate-200">
+          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden text-slate-200">
             <ErrorBoundary>{children}</ErrorBoundary>
           </div>
         </div>
       </body>
     </html>
-  );
+  )
 }
-
