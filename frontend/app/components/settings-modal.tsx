@@ -1,169 +1,213 @@
-"use client"
+'use client'
 
-import { useState } from "react"
-import { Loader2 } from "lucide-react"
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { Loader2, X } from 'lucide-react'
+import { streamIngest, toErrorMessage } from '../lib/api'
 
 interface SettingsModalProps {
-    open: boolean
-    onOpenChange: (open: boolean) => void
-    onIngestSuccess: (path: string) => void
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onIngestSuccess: (path: string) => void
+  initialPath?: string
 }
 
-export function SettingsModal({ open, onOpenChange, onIngestSuccess }: SettingsModalProps) {
-    const [repoPath, setRepoPath] = useState("")
-    const [isLoading, setIsLoading] = useState(false)
-    const [error, setError] = useState<string | null>(null)
-    const [progressMessages, setProgressMessages] = useState<string[]>([])
+/** Emitted by the backend on the final line of a successful ingestion. */
+const COMPLETION_MARKER = 'INGESTION COMPLETE'
 
-    const handleIngest = async () => {
-        if (!repoPath) return
-        setIsLoading(true)
-        setError(null)
-        setProgressMessages([])
+export function SettingsModal({
+  open,
+  onOpenChange,
+  onIngestSuccess,
+  initialPath = '',
+}: SettingsModalProps) {
+  const [repoPath, setRepoPath] = useState(initialPath)
+  const [isIngesting, setIsIngesting] = useState(false)
+  const [error, setError] = useState<string | undefined>(undefined)
+  const [progress, setProgress] = useState('')
 
-        try {
-            // Dosya yolunu temizle (tırnak işaretlerini kaldır)
-            const sanitizedPath = repoPath.trim().replace(/^['"]+|['"]+$/g, '')
-            console.log("Ingesting path:", sanitizedPath)
+  const abortRef = useRef<AbortController | undefined>(undefined)
+  const progressRef = useRef<HTMLPreElement>(null)
 
-            const response = await fetch("http://localhost:8000/api/ingest", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ repo_path: sanitizedPath }),
-            })
+  // Abort any in-flight ingestion if the component unmounts.
+  useEffect(() => () => abortRef.current?.abort(), [])
 
-            if (!response.ok) {
-                const data = await response.json().catch(() => ({}))
-                throw new Error(data.detail || `Ingestion failed with status ${response.status}`)
-            }
+  // Keep the newest progress line visible.
+  useEffect(() => {
+    const element = progressRef.current
+    if (element) element.scrollTop = element.scrollHeight
+  }, [progress])
 
-            // Stream yanıtı oku (ilerleme güncellemeleri için)
-            const reader = response.body?.getReader()
-            const decoder = new TextDecoder()
+  const close = useCallback(() => {
+    if (isIngesting) return
+    onOpenChange(false)
+  }, [isIngesting, onOpenChange])
 
-            if (!reader) {
-                throw new Error("No response body")
-            }
-
-            while (true) {
-                const { done, value } = await reader.read()
-                if (done) break
-
-                const text = decoder.decode(value)
-                setProgressMessages(prev => [...prev, text])
-
-                // İçe aktarmanın tamamlanıp tamamlanmadığını kontrol et
-                if (text.includes("🎉 INGESTION COMPLETE!")) {
-                    // Tarayıcı bildirimi göster (destekleniyorsa)
-                    if ("Notification" in window && Notification.permission === "granted") {
-                        new Notification("CodeScope", {
-                            body: "✅ Repository ingestion completed! Ready to answer questions.",
-                            icon: "/favicon.ico"
-                        })
-                    }
-                }
-            }
-
-            onIngestSuccess(sanitizedPath)
-            setTimeout(() => onOpenChange(false), 1500) // Tamamlanmayı gösterdikten sonra kapat
-        } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-            console.error("Ingestion error:", err)
-            if (err.message.includes("Failed to fetch")) {
-                setError("Could not connect to backend. Is it running?")
-            } else {
-                setError(err.message || "An unexpected error occurred")
-            }
-        } finally {
-            setIsLoading(false)
-        }
+  // Escape closes the dialog, matching standard modal behaviour.
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close()
     }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [open, close])
 
-    return (
-        <>
-            {open && (
-                <>
-                    {/* Arka Plan Örtüsü (Backdrop) */}
-                    <div
-                        className="fixed inset-0 bg-black/80 backdrop-blur-sm z-40"
-                        onClick={() => onOpenChange(false)}
-                    />
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    // Without this the form does a full page navigation and the app reloads.
+    event.preventDefault()
 
-                    {/* Modal Penceresi */}
-                    <div className="fixed inset-0 flex items-center justify-center z-50 p-4 pointer-events-none">
-                        <div className="bg-[#1a1b26] border border-white/20 rounded-xl shadow-2xl w-full max-w-md pointer-events-auto max-h-[90vh] flex flex-col">
-                            {/* Başlık (Header) */}
-                            <div className="p-6 border-b border-white/10 flex-shrink-0">
-                                <h2 className="text-xl font-semibold text-white">Repository Settings</h2>
-                                <p className="text-sm text-white/50 mt-1">Open a local repository to analyze</p>
-                            </div>
+    const path = repoPath.trim().replace(/^['"]+|['"]+$/g, '')
+    if (!path || isIngesting) return
 
-                            {/* İçerik - Kaydırılabilir */}
-                            <div className="p-6 flex-1 overflow-y-auto">
-                                <form onSubmit={handleIngest} className="space-y-4">
-                                    <div>
-                                        <label htmlFor="repoPath" className="block text-sm font-medium text-white/70 mb-2">
-                                            Repository Path
-                                        </label>
-                                        <input
-                                            id="repoPath"
-                                            type="text"
-                                            value={repoPath}
-                                            onChange={(e) => setRepoPath(e.target.value)}
-                                            placeholder="C:\Users\YourName\Projects\my-repo"
-                                            className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-blue-500/50 focus:bg-white/10 transition-colors"
-                                            required
-                                        />
-                                        <p className="text-xs text-white/40 mt-2">
-                                            Enter the full path to your local repository
-                                        </p>
-                                    </div>
+    const controller = new AbortController()
+    abortRef.current = controller
 
-                                    {error && (
-                                        <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-                                            <p className="text-sm text-red-300">{error}</p>
-                                        </div>
-                                    )}
+    setIsIngesting(true)
+    setError(undefined)
+    setProgress('')
 
-                                    {progressMessages.length > 0 && (
-                                        <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg max-h-60 overflow-y-auto">
-                                            <div className="text-sm text-blue-200 font-mono whitespace-pre-wrap">
-                                                {progressMessages.join('')}
-                                            </div>
-                                        </div>
-                                    )}
-                                </form>
-                            </div>
+    let completed = false
+    try {
+      for await (const chunk of streamIngest(path, controller.signal)) {
+        setProgress((previous) => previous + chunk)
+        if (chunk.includes(COMPLETION_MARKER)) completed = true
+      }
 
-                            {/* Alt Bilgi (Footer) - Sabit */}
-                            <div className="p-6 border-t border-white/10 flex gap-3 flex-shrink-0">
-                                <button
-                                    type="button"
-                                    onClick={() => onOpenChange(false)}
-                                    className="flex-1 px-4 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-white font-medium transition-colors"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={handleIngest}
-                                    disabled={isLoading}
-                                    className="flex-1 px-4 py-2.5 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-500/50 rounded-lg text-white font-medium transition-colors flex items-center justify-center gap-2"
-                                >
-                                    {isLoading ? (
-                                        <>
-                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                            Opening...
-                                        </>
-                                    ) : (
-                                        'Open Repository'
-                                    )}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </>
+      if (!completed) {
+        setError('Indexing ended before it finished. Check the progress log above.')
+        return
+      }
+
+      notifyCompletion()
+      onIngestSuccess(path)
+      onOpenChange(false)
+    } catch (caught) {
+      if (caught instanceof DOMException && caught.name === 'AbortError') return
+      setError(toErrorMessage(caught))
+    } finally {
+      setIsIngesting(false)
+      abortRef.current = undefined
+    }
+  }
+
+  if (!open) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-title"
+    >
+      <div
+        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+        onClick={close}
+        aria-hidden="true"
+      />
+
+      <div className="relative flex max-h-[90vh] w-full max-w-md flex-col rounded-xl border border-white/20 bg-[#1a1b26] shadow-2xl">
+        <div className="flex flex-shrink-0 items-start justify-between border-b border-white/10 p-6">
+          <div>
+            <h2 id="settings-title" className="text-xl font-semibold text-white">
+              Repository
+            </h2>
+            <p className="mt-1 text-sm text-white/50">Index a local repository to chat with it</p>
+          </div>
+          <button
+            type="button"
+            onClick={close}
+            disabled={isIngesting}
+            aria-label="Close"
+            className="rounded-lg p-1 text-white/50 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-30"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="flex-1 space-y-4 overflow-y-auto p-6">
+            <div>
+              <label htmlFor="repoPath" className="mb-2 block text-sm font-medium text-white/70">
+                Repository path
+              </label>
+              <input
+                id="repoPath"
+                type="text"
+                value={repoPath}
+                onChange={(event) => setRepoPath(event.target.value)}
+                disabled={isIngesting}
+                placeholder="C:\Users\you\Projects\my-repo"
+                autoComplete="off"
+                spellCheck={false}
+                className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 font-mono text-sm text-white transition-colors placeholder:text-white/30 focus:border-blue-500/50 focus:bg-white/10 focus:outline-none disabled:opacity-50"
+                required
+              />
+              <p className="mt-2 text-xs text-white/40">
+                Absolute path to a folder on this machine. Indexing replaces the previous
+                repository.
+              </p>
+            </div>
+
+            {error && (
+              <div
+                role="alert"
+                className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300"
+              >
+                {error}
+              </div>
             )}
-        </>
-    )
+
+            {progress && (
+              <pre
+                ref={progressRef}
+                aria-live="polite"
+                className="max-h-60 overflow-y-auto whitespace-pre-wrap rounded-lg border border-blue-500/30 bg-blue-500/10 p-3 font-mono text-xs text-blue-200"
+              >
+                {progress}
+              </pre>
+            )}
+          </div>
+
+          <div className="flex flex-shrink-0 gap-3 border-t border-white/10 p-6">
+            <button
+              type="button"
+              onClick={close}
+              disabled={isIngesting}
+              className="flex-1 rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-40"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isIngesting || !repoPath.trim()}
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-500 px-4 py-2.5 font-medium text-white transition-colors hover:bg-blue-600 disabled:bg-blue-500/40"
+            >
+              {isIngesting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  Indexing...
+                </>
+              ) : (
+                'Index repository'
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
 }
 
-
+/** Show a desktop notification when indexing finishes, if permitted. */
+function notifyCompletion() {
+  if (typeof window === 'undefined' || !('Notification' in window)) return
+  if (Notification.permission !== 'granted') return
+  try {
+    new Notification('CodeScope', {
+      body: 'Repository indexed. You can start asking questions.',
+      icon: '/favicon.ico',
+    })
+  } catch {
+    // Notifications are a nicety; never let them break the flow.
+  }
+}
