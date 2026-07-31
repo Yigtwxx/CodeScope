@@ -1,67 +1,58 @@
-"use client";
+'use client'
 
-import React from "react";
+import React from 'react'
+import { AlertTriangle } from 'lucide-react'
 
 interface ErrorBoundaryProps {
-  children: React.ReactNode;
+  children: React.ReactNode
 }
 
 interface ErrorBoundaryState {
-  hasError: boolean;
-  error: Error | null;
+  hasError: boolean
+  error?: Error
 }
 
-// Uygulama genelindeki hataları yakalayan bileşen
-export class ErrorBoundary extends React.Component<
-  ErrorBoundaryProps,
-  ErrorBoundaryState
-> {
+/**
+ * Catches render-time errors anywhere below it and shows a recoverable screen
+ * instead of an unmounted, blank page.
+ */
+export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = { hasError: false, error: null };
+    super(props)
+    this.state = { hasError: false }
   }
 
-  // Hata durumunda state'i güncelle
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    return { hasError: true, error };
+    return { hasError: true, error }
   }
 
-  // Hatayı logla
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error("ErrorBoundary caught an error:", error, errorInfo);
+    console.error('ErrorBoundary caught an error:', error, errorInfo)
   }
 
   render() {
-    if (this.state.hasError) {
-      // Hata durumunda gösterilecek yedek UI
-      return (
-        <div className="flex items-center justify-center h-screen bg-[#0f1117] text-white p-8">
-          <div className="max-w-2xl text-center space-y-6">
-            <div className="text-6xl mb-4">⚠️</div>
-            <h1 className="text-3xl font-bold text-red-400">
-              Oops! Something went wrong
-            </h1>
-            <p className="text-lg text-slate-300">
-              The application encountered an unexpected error. Please try
-              refreshing the page.
-            </p>
-            <div className="bg-black/50 p-4 rounded-lg border border-white/10 text-left">
-              <p className="text-sm text-red-300 font-mono">
-                {this.state.error?.message || "Unknown error"}
-              </p>
-            </div>
-            <button
-              onClick={() => window.location.reload()}
-              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition-colors"
-            >
-              Refresh Page
-            </button>
-          </div>
-        </div>
-      );
-    }
+    if (!this.state.hasError) return this.props.children
 
-    return this.props.children;
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#0a0a0a] p-8 text-white">
+        <div className="max-w-xl space-y-5 text-center">
+          <AlertTriangle className="mx-auto h-10 w-10 text-amber-400" aria-hidden="true" />
+          <h1 className="text-2xl font-semibold">Something went wrong</h1>
+          <p className="text-white/60">
+            The interface hit an unexpected error. Reloading usually clears it.
+          </p>
+          <pre className="overflow-x-auto rounded-lg border border-white/10 bg-black/50 p-4 text-left font-mono text-sm text-red-300">
+            {this.state.error?.message ?? 'Unknown error'}
+          </pre>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="cursor-pointer rounded-lg bg-white px-6 py-2.5 font-medium text-black transition-colors hover:bg-white/90"
+          >
+            Reload
+          </button>
+        </div>
+      </div>
+    )
   }
 }
-
